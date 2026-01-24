@@ -13,7 +13,10 @@ return new class extends Migration
     {
         Schema::create('package_types', function (Blueprint $table) {
             $table->id();
+            $table->string('nama');
             $table->timestamps();
+            
+            $table->index('nama');
         });
     }
 
