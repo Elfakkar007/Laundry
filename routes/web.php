@@ -4,6 +4,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\OutletController;
 use App\Http\Controllers\PackageTypeController;
 use App\Http\Controllers\PaketController;
+use App\Http\Controllers\MemberController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -25,6 +26,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('outlets', OutletController::class)->except(['create', 'show', 'edit']);
     Route::resource('package-types', PackageTypeController::class)->except(['create', 'show', 'edit']);
     Route::resource('pakets', PaketController::class)->except(['create', 'show', 'edit']);
+    Route::resource('members', MemberController::class)->except(['create', 'show', 'edit']);
 });
 
 require __DIR__.'/auth.php';
