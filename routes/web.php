@@ -4,7 +4,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\OutletController;
 use App\Http\Controllers\PackageTypeController;
 use App\Http\Controllers\PaketController;
-use App\Http\Controllers\MemberController;
+use App\Http\Controllers\CustomerController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -26,7 +26,11 @@ Route::middleware('auth')->group(function () {
     Route::resource('outlets', OutletController::class)->except(['create', 'show', 'edit']);
     Route::resource('package-types', PackageTypeController::class)->except(['create', 'show', 'edit']);
     Route::resource('pakets', PaketController::class)->except(['create', 'show', 'edit']);
-    Route::resource('members', MemberController::class)->except(['create', 'show', 'edit']);
+    
+    // Customer Routes (menggantikan members)
+    Route::resource('customers', CustomerController::class)->except(['create', 'show', 'edit']);
+    Route::post('customers/{customer}/toggle-member', [CustomerController::class, 'toggleMember'])
+        ->name('customers.toggle-member');
 });
 
 require __DIR__.'/auth.php';

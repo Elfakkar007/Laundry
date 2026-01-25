@@ -11,20 +11,20 @@ class Transaksi extends Model
 {
     use HasFactory;
 
-    // Constants untuk Status (nilai string dinamis)
+    // Constants untuk Status
     public const STATUS_BARU = 'baru';
     public const STATUS_PROSES = 'proses';
     public const STATUS_SELESAI = 'selesai';
     public const STATUS_DIAMBIL = 'diambil';
 
-    // Constants untuk Dibayar (nilai string dinamis)
+    // Constants untuk Dibayar
     public const DIBAYAR_BELUM = 'belum_dibayar';
     public const DIBAYAR_LUNAS = 'dibayar';
 
     protected $fillable = [
         'id_outlet',
         'kode_invoice',
-        'id_member',
+        'id_customer', // Updated from id_member
         'tgl',
         'batas_waktu',
         'tgl_bayar',
@@ -57,11 +57,11 @@ class Transaksi extends Model
     }
 
     /**
-     * Relasi ke Member
+     * Relasi ke Customer (Updated from Member)
      */
-    public function member(): BelongsTo
+    public function customer(): BelongsTo
     {
-        return $this->belongsTo(Member::class, 'id_member');
+        return $this->belongsTo(Customer::class, 'id_customer');
     }
 
     /**
