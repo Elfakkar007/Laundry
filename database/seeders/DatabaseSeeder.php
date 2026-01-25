@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             OutletSeeder::class,    // 2. Buat outlet
             TypeSeeder::class,      // 3. Buat package types
             UserSeeder::class,      // 4. Buat users dengan role
+            SettingSeeder::class,   // 5. Buat setting awal
         ]);
 
         $this->command->info('🚀 Database seeding completed successfully!');
