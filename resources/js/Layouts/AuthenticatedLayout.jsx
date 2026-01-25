@@ -1,176 +1,321 @@
-import ApplicationLogo from '@/Components/ApplicationLogo';
-import Dropdown from '@/Components/Dropdown';
-import NavLink from '@/Components/NavLink';
-import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import { Link, usePage } from '@inertiajs/react';
 import { useState } from 'react';
+import { Button } from '@/Components/ui/button';
+import { 
+    DropdownMenu, 
+    DropdownMenuContent, 
+    DropdownMenuItem, 
+    DropdownMenuLabel,
+    DropdownMenuSeparator, 
+    DropdownMenuTrigger 
+} from '@/Components/ui/dropdown-menu';
+import { Separator } from '@/Components/ui/separator';
+import { 
+    LayoutDashboard, 
+    Store, 
+    Package, 
+    Users, 
+    FileText, 
+    Settings, 
+    Tag,
+    CreditCard,
+    UserCog,
+    Menu,
+    X,
+    LogOut,
+    ChevronDown,
+    Sparkles
+} from 'lucide-react';
 
 export default function AuthenticatedLayout({ header, children }) {
-    const user = usePage().props.auth.user;
+    const { auth } = usePage().props;
+    const user = auth.user;
+    const [sidebarOpen, setSidebarOpen] = useState(false);
 
-    const [showingNavigationDropdown, setShowingNavigationDropdown] =
-        useState(false);
+    // Get user permissions (dari Spatie Laravel Permission)
+    const hasPermission = (permission) => {
+        return user.permissions?.includes(permission) || false;
+    };
+
+    const hasRole = (role) => {
+        return user.roles?.includes(role) || false;
+    };
+
+    // Menu items dengan permission check
+    const menuItems = [
+        {
+            name: 'Dashboard',
+            href: route('dashboard'),
+            icon: LayoutDashboard,
+            active: route().current('dashboard'),
+            show: true, // Always show
+        },
+        {
+            name: 'Master Data',
+            icon: Sparkles,
+            isGroup: true,
+            show: hasPermission('outlet.view') || hasPermission('paket.view') || hasPermission('customer.view'),
+            items: [
+                {
+                    name: 'Outlet',
+                    href: route('outlets.index'),
+                    icon: Store,
+                    active: route().current('outlets.*'),
+                    show: hasPermission('outlet.view'),
+                },
+                {
+                    name: 'Jenis Paket',
+                    href: route('package-types.index'),
+                    icon: Package,
+                    active: route().current('package-types.*'),
+                    show: hasPermission('paket.view'),
+                },
+                {
+                    name: 'Paket Layanan',
+                    href: route('pakets.index'),
+                    icon: FileText,
+                    active: route().current('pakets.*'),
+                    show: hasPermission('paket.view'),
+                },
+                {
+                    name: 'Pelanggan',
+                    href: route('customers.index'),
+                    icon: Users,
+                    active: route().current('customers.*'),
+                    show: hasPermission('customer.view'),
+                },
+            ],
+        },
+        {
+            name: 'Keuangan',
+            icon: CreditCard,
+            isGroup: true,
+            show: hasPermission('finance.view'),
+            items: [
+                {
+                    name: 'Biaya Tambahan',
+                    href: route('surcharges.index'),
+                    icon: CreditCard,
+                    active: route().current('surcharges.*'),
+                    show: hasPermission('finance.view'),
+                },
+                {
+                    name: 'Promo & Diskon',
+                    href: route('promos.index'),
+                    icon: Tag,
+                    active: route().current('promos.*'),
+                    show: hasPermission('finance.view'),
+                },
+            ],
+        },
+        {
+            name: 'User Management',
+            href: route('users.index'),
+            icon: UserCog,
+            active: route().current('users.*'),
+            show: hasPermission('user.view'),
+        },
+        {
+            name: 'Pengaturan',
+            href: route('settings.index'),
+            icon: Settings,
+            active: route().current('settings.*'),
+            show: hasPermission('setting.view'),
+        },
+    ];
+
+    const NavItem = ({ item }) => {
+        if (item.isGroup) {
+            return (
+                <div className="space-y-1">
+                    <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        <div className="flex items-center gap-2">
+                            <item.icon className="h-4 w-4" />
+                            {item.name}
+                        </div>
+                    </div>
+                    {item.items.map((subItem) => 
+                        subItem.show && <NavItem key={subItem.name} item={subItem} />
+                    )}
+                </div>
+            );
+        }
+
+        return (
+            <Link
+                href={item.href}
+                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    item.active
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+                }`}
+            >
+                <item.icon className="h-4 w-4" />
+                {item.name}
+            </Link>
+        );
+    };
 
     return (
-        <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
-            <nav className="border-b border-gray-100 bg-white dark:border-gray-700 dark:bg-gray-800">
-                <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                    <div className="flex h-16 justify-between">
-                        <div className="flex">
-                            <div className="flex shrink-0 items-center">
-                                <Link href="/">
-                                    <ApplicationLogo className="block h-9 w-auto fill-current text-gray-800 dark:text-gray-200" />
-                                </Link>
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+            {/* Sidebar - Desktop */}
+            <aside className="hidden md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col">
+                <div className="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+                    {/* Logo */}
+                    <div className="flex h-16 items-center px-4 border-b border-gray-200 dark:border-gray-800">
+                        <Link href={route('dashboard')} className="flex items-center gap-2">
+                            <div className="h-8 w-8 rounded-md bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
+                                <Sparkles className="h-5 w-5 text-white" />
                             </div>
+                            <span className="text-lg font-bold text-gray-900 dark:text-white">
+                                Laundry Pro
+                            </span>
+                        </Link>
+                    </div>
 
-                            <div className="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                                <NavLink
-                                    href={route('dashboard')}
-                                    active={route().current('dashboard')}
-                                >
-                                    Dashboard
-                                </NavLink>
+                    {/* Navigation */}
+                    <nav className="flex-1 space-y-1 px-2 py-4 overflow-y-auto">
+                        {menuItems.map((item) => 
+                            item.show && <NavItem key={item.name} item={item} />
+                        )}
+                    </nav>
+
+                    {/* User Info */}
+                    <div className="border-t border-gray-200 p-4 dark:border-gray-800">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold">
+                                {user.nama.charAt(0).toUpperCase()}
                             </div>
-                        </div>
-
-                        <div className="hidden sm:ms-6 sm:flex sm:items-center">
-                            <div className="relative ms-3">
-                                <Dropdown>
-                                    <Dropdown.Trigger>
-                                        <span className="inline-flex rounded-md">
-                                            <button
-                                                type="button"
-                                                className="inline-flex items-center rounded-md border border-transparent bg-white px-3 py-2 text-sm font-medium leading-4 text-gray-500 transition duration-150 ease-in-out hover:text-gray-700 focus:outline-none dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-300"
-                                            >
-                                                {user.nama}
-
-                                                <svg
-                                                    className="-me-0.5 ms-2 h-4 w-4"
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    viewBox="0 0 20 20"
-                                                    fill="currentColor"
-                                                >
-                                                    <path
-                                                        fillRule="evenodd"
-                                                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                                        clipRule="evenodd"
-                                                    />
-                                                </svg>
-                                            </button>
-                                        </span>
-                                    </Dropdown.Trigger>
-
-                                    <Dropdown.Content>
-                                        <Dropdown.Link
-                                            href={route('profile.edit')}
-                                        >
-                                            Profile
-                                        </Dropdown.Link>
-                                        <Dropdown.Link
-                                            href={route('logout')}
-                                            method="post"
-                                            as="button"
-                                        >
-                                            Log Out
-                                        </Dropdown.Link>
-                                    </Dropdown.Content>
-                                </Dropdown>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                    {user.nama}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                    {user.roles?.[0] || 'User'}
+                                </p>
                             </div>
-                        </div>
-
-                        <div className="-me-2 flex items-center sm:hidden">
-                            <button
-                                onClick={() =>
-                                    setShowingNavigationDropdown(
-                                        (previousState) => !previousState,
-                                    )
-                                }
-                                className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 transition duration-150 ease-in-out hover:bg-gray-100 hover:text-gray-500 focus:bg-gray-100 focus:text-gray-500 focus:outline-none dark:text-gray-500 dark:hover:bg-gray-900 dark:hover:text-gray-400 dark:focus:bg-gray-900 dark:focus:text-gray-400"
-                            >
-                                <svg
-                                    className="h-6 w-6"
-                                    stroke="currentColor"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path
-                                        className={
-                                            !showingNavigationDropdown
-                                                ? 'inline-flex'
-                                                : 'hidden'
-                                        }
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth="2"
-                                        d="M4 6h16M4 12h16M4 18h16"
-                                    />
-                                    <path
-                                        className={
-                                            showingNavigationDropdown
-                                                ? 'inline-flex'
-                                                : 'hidden'
-                                        }
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth="2"
-                                        d="M6 18L18 6M6 6l12 12"
-                                    />
-                                </svg>
-                            </button>
                         </div>
                     </div>
                 </div>
+            </aside>
 
+            {/* Mobile Sidebar */}
+            <div
+                className={`fixed inset-0 z-40 md:hidden ${
+                    sidebarOpen ? 'block' : 'hidden'
+                }`}
+            >
                 <div
-                    className={
-                        (showingNavigationDropdown ? 'block' : 'hidden') +
-                        ' sm:hidden'
-                    }
-                >
-                    <div className="space-y-1 pb-3 pt-2">
-                        <ResponsiveNavLink
-                            href={route('dashboard')}
-                            active={route().current('dashboard')}
+                    className="fixed inset-0 bg-gray-600 bg-opacity-75"
+                    onClick={() => setSidebarOpen(false)}
+                />
+                <div className="fixed inset-y-0 left-0 flex w-64 flex-col bg-white dark:bg-gray-900">
+                    {/* Mobile Logo */}
+                    <div className="flex h-16 items-center justify-between px-4 border-b border-gray-200 dark:border-gray-800">
+                        <Link href={route('dashboard')} className="flex items-center gap-2">
+                            <div className="h-8 w-8 rounded-md bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
+                                <Sparkles className="h-5 w-5 text-white" />
+                            </div>
+                            <span className="text-lg font-bold text-gray-900 dark:text-white">
+                                Laundry Pro
+                            </span>
+                        </Link>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setSidebarOpen(false)}
                         >
-                            Dashboard
-                        </ResponsiveNavLink>
+                            <X className="h-5 w-5" />
+                        </Button>
                     </div>
 
-                    <div className="border-t border-gray-200 pb-1 pt-4 dark:border-gray-600">
-                        <div className="px-4">
-                            <div className="text-base font-medium text-gray-800 dark:text-gray-200">
-                                {user.nama}
-                            </div>
-                            <div className="text-sm font-medium text-gray-500">
-                                @{user.username}
-                            </div>
-                        </div>
+                    {/* Mobile Navigation */}
+                    <nav className="flex-1 space-y-1 px-2 py-4 overflow-y-auto">
+                        {menuItems.map((item) => 
+                            item.show && <NavItem key={item.name} item={item} />
+                        )}
+                    </nav>
 
-                        <div className="mt-3 space-y-1">
-                            <ResponsiveNavLink href={route('profile.edit')}>
-                                Profile
-                            </ResponsiveNavLink>
-                            <ResponsiveNavLink
-                                method="post"
-                                href={route('logout')}
-                                as="button"
-                            >
-                                Log Out
-                            </ResponsiveNavLink>
+                    {/* Mobile User Info */}
+                    <div className="border-t border-gray-200 p-4 dark:border-gray-800">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold">
+                                {user.nama.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                    {user.nama}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                    {user.roles?.[0] || 'User'}
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </nav>
+            </div>
 
-            {header && (
-                <header className="bg-white shadow dark:bg-gray-800">
-                    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-                        {header}
+            {/* Main Content */}
+            <div className="md:pl-64 flex flex-col flex-1">
+                {/* Top Navbar */}
+                <header className="sticky top-0 z-30 bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+                    <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
+                        {/* Mobile Menu Button */}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="md:hidden"
+                            onClick={() => setSidebarOpen(true)}
+                        >
+                            <Menu className="h-5 w-5" />
+                        </Button>
+
+                        {/* Page Title */}
+                        <div className="flex-1">
+                            {header && (
+                                <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+                                    {header}
+                                </h1>
+                            )}
+                        </div>
+
+                        {/* User Dropdown */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" className="flex items-center gap-2">
+                                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold text-sm">
+                                        {user.nama.charAt(0).toUpperCase()}
+                                    </div>
+                                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuLabel>
+                                    <div>
+                                        <p className="font-medium">{user.nama}</p>
+                                        <p className="text-xs text-gray-500">@{user.username}</p>
+                                    </div>
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem asChild>
+                                    <Link
+                                        href={route('logout')}
+                                        method="post"
+                                        as="button"
+                                        className="w-full cursor-pointer text-red-600"
+                                    >
+                                        <LogOut className="mr-2 h-4 w-4" />
+                                        Logout
+                                    </Link>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
                 </header>
-            )}
 
-            <main>{children}</main>
+                {/* Page Content */}
+                <main className="flex-1">{children}</main>
+            </div>
         </div>
     );
 }
