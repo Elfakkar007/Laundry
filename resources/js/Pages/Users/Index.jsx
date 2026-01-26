@@ -371,7 +371,11 @@ export default function UsersIndex({ users, roles, outlets, filters, flash }) {
                                 </Label>
                                 <Select
                                     value={data.id_outlet}
-                                    onValueChange={(value) => setData('id_outlet', value)}
+                                    onValueChange={(value) => {
+                                        // Jika user memilih 'global', kita set data menjadi string kosong
+                                        // agar logic 'reset' berjalan dan placeholder muncul kembali
+                                        setData('id_outlet', value === 'global' ? '' : value);
+                                    }}
                                     disabled={data.role === 'admin'} // Disabled untuk Admin
                                 >
                                     <SelectTrigger className={errors.id_outlet ? 'border-red-500' : ''}>
@@ -384,7 +388,9 @@ export default function UsersIndex({ users, roles, outlets, filters, flash }) {
                                         } />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="">Tidak ada (Global)</SelectItem>
+                                        {/* PERBAIKAN DI SINI: value tidak boleh string kosong */}
+                                        <SelectItem value="global">Tidak ada (Global)</SelectItem>
+                                        
                                         {outlets.map((outlet) => (
                                             <SelectItem key={outlet.id} value={outlet.id.toString()}>
                                                 {outlet.nama}

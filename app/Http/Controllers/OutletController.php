@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Outlet;
+use App\Traits\HasAuthorization;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -10,11 +11,12 @@ use Illuminate\Http\RedirectResponse;
 
 class OutletController extends Controller
 {
-    /**
-     * Display a listing of outlets.
-     */
+    use HasAuthorization;
+
     public function index(Request $request): Response
     {
+        $this->authorizePermission('outlet.view');
+
         $search = $request->input('search');
         
         $outlets = Outlet::query()
@@ -38,6 +40,8 @@ class OutletController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        $this->authorizePermission('outlet.create');
+
         $validated = $request->validate([
             'nama' => 'required|string|max:255',
             'alamat' => 'required|string',
@@ -58,6 +62,8 @@ class OutletController extends Controller
      */
     public function update(Request $request, Outlet $outlet): RedirectResponse
     {
+        $this->authorizePermission('outlet.update');
+
         $validated = $request->validate([
             'nama' => 'required|string|max:255',
             'alamat' => 'required|string',
@@ -78,9 +84,13 @@ class OutletController extends Controller
      */
     public function destroy(Outlet $outlet): RedirectResponse
     {
+        $this->authorizePermission('outlet.delete');
+
         try {
-            // Check if outlet has related data
-            if ($outlet->users()->count() > 0 || $outlet->pakets()->count() > 0 || $outlet->transaksis()->count() > 0) {
+            // Business logic protection: Check relationships
+            if ($outlet->users()->count() > 0 || 
+                $outlet->pakets()->count() > 0 || 
+                $outlet->transaksis()->count() > 0) {
                 return redirect()->back()->with('error', 'Outlet tidak dapat dihapus karena masih memiliki data terkait (Users, Pakets, atau Transaksi).');
             }
 

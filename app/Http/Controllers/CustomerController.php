@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Customer;
+use App\Traits\HasAuthorization;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -10,13 +11,18 @@ use Illuminate\Http\RedirectResponse;
 
 class CustomerController extends Controller
 {
+    use HasAuthorization;
+
+
     /**
      * Display a listing of customers.
      */
     public function index(Request $request): Response
     {
+        $this->authorizePermission('customer.view');
+
         $search = $request->input('search');
-        $memberFilter = $request->input('member_filter'); // 'all', 'member', 'reguler'
+        $memberFilter = $request->input('member_filter');
         
         $customers = Customer::query()
             ->when($search, function ($query, $search) {
@@ -45,6 +51,8 @@ class CustomerController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        $this->authorizePermission('customer.create');
+
         $validated = $request->validate([
             'nama' => 'required|string|max:255',
             'no_hp' => 'required|string|max:20|unique:customers,no_hp',
@@ -72,6 +80,8 @@ class CustomerController extends Controller
      */
     public function update(Request $request, Customer $customer): RedirectResponse
     {
+        $this->authorizePermission('customer.update');
+
         $validated = $request->validate([
             'nama' => 'required|string|max:255',
             'no_hp' => 'required|string|max:20|unique:customers,no_hp,' . $customer->id,
@@ -99,8 +109,10 @@ class CustomerController extends Controller
      */
     public function destroy(Customer $customer): RedirectResponse
     {
+        $this->authorizePermission('customer.delete');
+
         try {
-            // Check if customer has related transaksis
+            // Business logic protection
             if ($customer->transaksis()->count() > 0) {
                 return redirect()->back()->with('error', 'Pelanggan tidak dapat dihapus karena masih memiliki transaksi terkait.');
             }
@@ -118,6 +130,8 @@ class CustomerController extends Controller
      */
     public function toggleMember(Customer $customer): RedirectResponse
     {
+        $this->authorizePermission('customer.update');
+
         try {
             $customer->update([
                 'is_member' => !$customer->is_member

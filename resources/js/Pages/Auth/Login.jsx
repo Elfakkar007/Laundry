@@ -3,7 +3,6 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card';
-import ApplicationLogo from '@/Components/ApplicationLogo';
 
 export default function Login({ status }) {
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -26,7 +25,6 @@ export default function Login({ status }) {
             <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
                 <Card className="w-full max-w-md">
                     <CardHeader className="space-y-1 flex flex-col items-center">
-                        <ApplicationLogo className="h-16 w-16 fill-current text-gray-800 dark:text-gray-200 mb-4" />
                         <CardTitle className="text-2xl font-bold">Sistem Laundry</CardTitle>
                         <CardDescription>
                             Masukkan username dan password Anda

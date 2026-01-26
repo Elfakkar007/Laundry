@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\Outlet;
+use App\Traits\HasAuthorization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
@@ -14,11 +15,15 @@ use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
+    use HasAuthorization;
     /**
      * Display a listing of users
      */
     public function index(Request $request): Response
     {
+        // LAYER 3: Method-level authorization
+        $this->authorizePermission('user.view');
+
         $search = $request->input('search');
         $roleFilter = $request->input('role_filter');
         
@@ -51,6 +56,9 @@ class UserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        // LAYER 3: Method-level authorization
+        $this->authorizePermission('user.create');
+
         // Validation rules dengan logic conditional
         $rules = [
             'nama' => 'required|string|max:255',
@@ -99,6 +107,14 @@ class UserController extends Controller
      */
     public function update(Request $request, User $user): RedirectResponse
     {
+        // LAYER 3: Method-level authorization
+        $this->authorizePermission('user.update');
+
+        // LAYER 4: Prevent self-modification critical fields
+        if ($user->id === auth()->id()) {
+            return redirect()->back()->with('error', 'Tidak dapat mengubah role atau outlet akun sendiri!');
+        }
+
         $rules = [
             'nama' => 'required|string|max:255',
             'username' => 'required|string|max:255|unique:users,username,' . $user->id,
@@ -151,7 +167,11 @@ class UserController extends Controller
      */
     public function destroy(User $user): RedirectResponse
     {
+        // LAYER 3: Method-level authorization
+        $this->authorizePermission('user.delete');
+
         try {
+            // LAYER 4: Business logic protection
             // Prevent self-deletion
             if ($user->id === auth()->id()) {
                 return redirect()->back()->with('error', 'Tidak dapat menghapus akun sendiri!');
