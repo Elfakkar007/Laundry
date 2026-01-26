@@ -117,7 +117,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
     
     // ========================================
-    // CUSTOMER MANAGEMENT - Admin & Kasir
+    // CUSTOMER MANAGEMENT - Admin & Kasir (UPDATED)
     // ========================================
     Route::middleware(['role:admin|kasir'])->prefix('customers')->name('customers.')->group(function () {
         Route::get('/', [CustomerController::class, 'index'])
@@ -139,6 +139,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/{customer}/toggle-member', [CustomerController::class, 'toggleMember'])
             ->middleware('permission:customer.update')
             ->name('toggle-member');
+        
+        // NEW: Customer Detail & Points Management
+        Route::get('/{customer}', [CustomerController::class, 'show'])
+            ->middleware('permission:customer.view')
+            ->name('show');
+        
+        Route::post('/{customer}/adjust-points', [CustomerController::class, 'adjustPoints'])
+            ->middleware('permission:customer.update')
+            ->name('adjust-points');
     });
 
     // ========================================
@@ -148,10 +157,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/', [SettingController::class, 'index'])
             ->middleware('permission:setting.view')
             ->name('index');
-        
-        Route::put('/{setting}', [SettingController::class, 'update'])
-            ->middleware('permission:setting.update')
-            ->name('update');
         
         Route::post('/bulk-update', [SettingController::class, 'bulkUpdate'])
             ->middleware('permission:setting.update')

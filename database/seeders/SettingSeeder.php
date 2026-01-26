@@ -13,6 +13,7 @@ class SettingSeeder extends Seeder
     public function run(): void
     {
         $settings = [
+            // Existing settings
             [
                 'key' => 'tax_rate',
                 'value' => '11',
@@ -30,6 +31,26 @@ class SettingSeeder extends Seeder
                 'value' => '0',
                 'type' => 'number',
                 'description' => 'Persentase diskon otomatis untuk member (%)',
+            ],
+            
+            // NEW: Points System Settings
+            [
+                'key' => 'points_enabled',
+                'value' => 'true',
+                'type' => 'boolean',
+                'description' => 'Aktifkan sistem poin member',
+            ],
+            [
+                'key' => 'points_earn_ratio',
+                'value' => '10000',
+                'type' => 'number',
+                'description' => 'Kelipatan nominal belanja untuk dapat 1 poin (Rp)',
+            ],
+            [
+                'key' => 'points_redeem_value',
+                'value' => '500',
+                'type' => 'number',
+                'description' => 'Nilai tukar 1 poin dalam Rupiah',
             ],
         ];
 

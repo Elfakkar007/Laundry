@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Customer;
+use App\Models\PointHistory;
 use App\Traits\HasAuthorization;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -12,7 +13,6 @@ use Illuminate\Http\RedirectResponse;
 class CustomerController extends Controller
 {
     use HasAuthorization;
-
 
     /**
      * Display a listing of customers.
@@ -141,6 +141,67 @@ class CustomerController extends Controller
             return redirect()->back()->with('success', "Status pelanggan berhasil diubah menjadi {$status}!");
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Gagal mengubah status: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Show customer detail with points history
+     */
+    public function show(Customer $customer): Response
+    {
+        $this->authorizePermission('customer.view');
+
+        $customer->load(['pointHistories' => function ($query) {
+            $query->with('createdBy')
+                  ->orderBy('created_at', 'desc')
+                  ->limit(50);
+        }]);
+
+        return Inertia::render('Master/Customers/Show', [
+            'customer' => $customer,
+            'pointHistories' => $customer->pointHistories,
+            'pointsSettings' => [
+                'enabled' => \App\Models\Setting::getValue('points_enabled', true),
+                'earn_ratio' => \App\Models\Setting::getValue('points_earn_ratio', 10000),
+                'redeem_value' => \App\Models\Setting::getValue('points_redeem_value', 500),
+            ],
+        ]);
+    }
+
+    /**
+     * Adjust points manually (Admin only)
+     */
+    public function adjustPoints(Request $request, Customer $customer): RedirectResponse
+    {
+        $this->authorizePermission('customer.update');
+
+        $validated = $request->validate([
+            'action' => 'required|in:add,subtract',
+            'points' => 'required|integer|min:1',
+            'notes' => 'required|string|max:500',
+        ], [
+            'action.required' => 'Pilih aksi tambah atau kurangi poin',
+            'points.required' => 'Jumlah poin wajib diisi',
+            'points.min' => 'Jumlah poin minimal 1',
+            'notes.required' => 'Catatan wajib diisi',
+        ]);
+
+        try {
+            $points = $validated['action'] === 'add' 
+                ? $validated['points'] 
+                : -$validated['points'];
+
+            // Check if deducting and points are insufficient
+            if ($validated['action'] === 'subtract' && $customer->poin < $validated['points']) {
+                return redirect()->back()->with('error', 'Poin pelanggan tidak mencukupi!');
+            }
+
+            $customer->adjustPoints($points, $validated['notes']);
+
+            $action = $validated['action'] === 'add' ? 'ditambahkan' : 'dikurangi';
+            return redirect()->back()->with('success', "Poin berhasil {$action}!");
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal menyesuaikan poin: ' . $e->getMessage());
         }
     }
 }

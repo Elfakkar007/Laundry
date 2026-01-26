@@ -29,7 +29,7 @@ import {
     DialogFooter,
 } from '@/Components/ui/dialog';
 import { toast } from 'sonner';
-import { Pencil, Trash2, Plus, Search, Users, Crown, Phone, Mail, MapPin, Award } from 'lucide-react';
+import { Pencil, Trash2, Plus, Search, Users, Crown, Phone, Mail, MapPin, Award, Eye, Gift } from 'lucide-react';
 
 export default function CustomersIndex({ customers, filters, flash }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -129,7 +129,7 @@ export default function CustomersIndex({ customers, filters, flash }) {
                         Member
                     </Badge>
                     <Badge variant="outline" className="text-xs">
-                        <Award className="h-3 w-3 mr-1" />
+                        <Gift className="h-3 w-3 mr-1" />
                         {poin} poin
                     </Badge>
                 </div>
@@ -208,15 +208,14 @@ export default function CustomersIndex({ customers, filters, flash }) {
                                             <TableHead>Nama</TableHead>
                                             <TableHead>No. HP</TableHead>
                                             <TableHead>Email</TableHead>
-                                            <TableHead>Alamat</TableHead>
-                                            <TableHead className="text-center">Status</TableHead>
-                                            <TableHead className="text-right w-[120px]">Aksi</TableHead>
+                                            <TableHead className="text-center">Status & Poin</TableHead>
+                                            <TableHead className="text-right w-[150px]">Aksi</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {customers.data.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                                                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                                                     <Users className="h-12 w-12 mx-auto mb-2 opacity-20" />
                                                     <p>Tidak ada data pelanggan</p>
                                                 </TableCell>
@@ -249,21 +248,19 @@ export default function CustomersIndex({ customers, filters, flash }) {
                                                             <span className="text-gray-400">-</span>
                                                         )}
                                                     </TableCell>
-                                                    <TableCell className="max-w-xs truncate">
-                                                        {customer.alamat ? (
-                                                            <div className="flex items-start gap-2 text-sm">
-                                                                <MapPin className="h-3 w-3 text-gray-400 mt-0.5 flex-shrink-0" />
-                                                                <span className="truncate">{customer.alamat}</span>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-gray-400">-</span>
-                                                        )}
-                                                    </TableCell>
                                                     <TableCell className="text-center">
                                                         {getMemberBadge(customer.is_member, customer.poin)}
                                                     </TableCell>
                                                     <TableCell className="text-right">
                                                         <div className="flex justify-end gap-2">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="icon"
+                                                                onClick={() => router.visit(route('customers.show', customer.id))}
+                                                                title="Lihat Detail & Riwayat Poin"
+                                                            >
+                                                                <Eye className="h-4 w-4" />
+                                                            </Button>
                                                             <Button
                                                                 variant="outline"
                                                                 size="icon"

@@ -15,11 +15,14 @@ class SettingController extends Controller
      */
     public function index(): Response
     {
-        // Only get business logic settings
+        // Get all business logic settings
         $settings = Setting::whereIn('key', [
             'tax_rate',
             'member_discount',
-            'auto_apply_tax'
+            'auto_apply_tax',
+            'points_enabled',
+            'points_earn_ratio',
+            'points_redeem_value',
         ])->get();
 
         return Inertia::render('Settings/Index', [
@@ -28,25 +31,7 @@ class SettingController extends Controller
     }
 
     /**
-     * Update the specified setting.
-     */
-    public function update(Request $request, Setting $setting): RedirectResponse
-    {
-        $validated = $request->validate([
-            'value' => 'required',
-        ]);
-
-        try {
-            $setting->update($validated);
-
-            return redirect()->back()->with('success', 'Pengaturan berhasil diupdate!');
-        } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Gagal mengupdate pengaturan: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Bulk update settings
+     * Bulk update settings - FIXED
      */
     public function bulkUpdate(Request $request): RedirectResponse
     {

@@ -7,7 +7,7 @@ import { Label } from '@/Components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card';
 import { Switch } from '@/Components/ui/switch';
 import { toast } from 'sonner';
-import { Settings, Save, DollarSign, Award, Percent } from 'lucide-react';
+import { Settings, Save, DollarSign, Award, Percent, Gift, TrendingUp } from 'lucide-react';
 
 export default function SettingsIndex({ settings, flash }) {
     const [settingsData, setSettingsData] = useState({});
@@ -19,7 +19,7 @@ export default function SettingsIndex({ settings, flash }) {
             if (setting.type === 'boolean') {
                 value = setting.value === 'true' || setting.value === true;
             } else if (setting.type === 'number') {
-                value = parseFloat(setting.value);
+                value = parseFloat(setting.value) || 0; // FIX: Default to 0 if empty
             }
             data[setting.key] = value;
         });
@@ -47,21 +47,29 @@ export default function SettingsIndex({ settings, flash }) {
 
         post(route('settings.bulk-update'), {
             data: { settings: settingsArray },
+            preserveScroll: true,
             onSuccess: () => {
                 toast.success('Pengaturan berhasil disimpan!');
             },
             onError: (errors) => {
+                console.error('Errors:', errors);
                 toast.error('Gagal menyimpan pengaturan');
             }
         });
     };
 
+    // FIX: Handle empty input properly
     const updateSetting = (key, value) => {
         setSettingsData(prev => ({
             ...prev,
-            [key]: value
+            [key]: value === '' ? 0 : value // Convert empty string to 0
         }));
     };
+
+    // Calculate examples
+    const exampleTransaction = 100000;
+    const earnedPoints = Math.floor(exampleTransaction / (settingsData.points_earn_ratio || 10000));
+    const pointsValue = earnedPoints * (settingsData.points_redeem_value || 500);
 
     return (
         <AuthenticatedLayout
@@ -100,8 +108,9 @@ export default function SettingsIndex({ settings, flash }) {
                                         step="0.01"
                                         min="0"
                                         max="100"
-                                        value={settingsData.tax_rate || 11}
-                                        onChange={(e) => updateSetting('tax_rate', parseFloat(e.target.value))}
+                                        value={settingsData.tax_rate || ''}
+                                        onChange={(e) => updateSetting('tax_rate', e.target.value)}
+                                        placeholder="0"
                                         className="mt-1"
                                     />
                                     <p className="mt-1 text-xs text-gray-500">
@@ -151,29 +160,115 @@ export default function SettingsIndex({ settings, flash }) {
                                         step="0.01"
                                         min="0"
                                         max="100"
-                                        value={settingsData.member_discount || 0}
-                                        onChange={(e) => updateSetting('member_discount', parseFloat(e.target.value))}
+                                        value={settingsData.member_discount || ''}
+                                        onChange={(e) => updateSetting('member_discount', e.target.value)}
+                                        placeholder="0"
                                         className="mt-1"
                                     />
                                     <p className="mt-1 text-xs text-gray-500">
                                         Diskon yang diberikan otomatis untuk pelanggan member. Set 0 untuk tidak ada diskon otomatis.
                                     </p>
                                 </div>
+                            </CardContent>
+                        </Card>
 
-                                <div className="p-4 border rounded-lg bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/10 dark:to-amber-900/10">
-                                    <div className="flex items-start gap-3">
-                                        <Award className="h-5 w-5 text-yellow-600 mt-0.5" />
-                                        <div className="flex-1">
-                                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                                                Info Member Benefit
-                                            </p>
-                                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                                                Member akan mendapatkan diskon otomatis sebesar {settingsData.member_discount || 0}% 
-                                                dari subtotal setiap transaksi. Diskon ini akan diterapkan sebelum pajak dihitung.
-                                            </p>
+                        {/* NEW: Points System Settings */}
+                        <Card className="border-2 border-amber-200 dark:border-amber-900">
+                            <CardHeader className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/10 dark:to-yellow-900/10">
+                                <CardTitle className="flex items-center gap-2">
+                                    <Gift className="h-5 w-5 text-amber-600" />
+                                    Sistem Poin Member (Loyalty Points)
+                                </CardTitle>
+                                <CardDescription>
+                                    Konfigurasi sistem poin untuk meningkatkan loyalitas pelanggan
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4 pt-6">
+                                {/* Enable/Disable Points */}
+                                <div className="flex items-center justify-between p-4 border-2 rounded-lg bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/10 dark:to-yellow-900/10">
+                                    <div>
+                                        <Label htmlFor="points_enabled" className="cursor-pointer font-semibold flex items-center gap-2">
+                                            <TrendingUp className="h-4 w-4" />
+                                            Aktifkan Sistem Poin
+                                        </Label>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Pelanggan akan mendapatkan poin dari setiap transaksi
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        id="points_enabled"
+                                        checked={settingsData.points_enabled || false}
+                                        onCheckedChange={(checked) => updateSetting('points_enabled', checked)}
+                                    />
+                                </div>
+
+                                {/* Points Earn Ratio */}
+                                <div>
+                                    <Label htmlFor="points_earn_ratio" className="flex items-center gap-2">
+                                        <DollarSign className="h-4 w-4" />
+                                        Kelipatan Belanja untuk 1 Poin (Rp)
+                                    </Label>
+                                    <Input
+                                        id="points_earn_ratio"
+                                        type="number"
+                                        step="1000"
+                                        min="0"
+                                        value={settingsData.points_earn_ratio || ''}
+                                        onChange={(e) => updateSetting('points_earn_ratio', e.target.value)}
+                                        placeholder="10000"
+                                        className="mt-1"
+                                        disabled={!settingsData.points_enabled}
+                                    />
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        Contoh: Jika diset Rp 10.000, maka setiap belanja Rp 10.000 akan dapat 1 poin
+                                    </p>
+                                </div>
+
+                                {/* Points Redeem Value */}
+                                <div>
+                                    <Label htmlFor="points_redeem_value" className="flex items-center gap-2">
+                                        <Gift className="h-4 w-4" />
+                                        Nilai Tukar 1 Poin (Rp)
+                                    </Label>
+                                    <Input
+                                        id="points_redeem_value"
+                                        type="number"
+                                        step="100"
+                                        min="0"
+                                        value={settingsData.points_redeem_value || ''}
+                                        onChange={(e) => updateSetting('points_redeem_value', e.target.value)}
+                                        placeholder="500"
+                                        className="mt-1"
+                                        disabled={!settingsData.points_enabled}
+                                    />
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        Contoh: Jika diset Rp 500, maka 1 poin dapat ditukar senilai Rp 500
+                                    </p>
+                                </div>
+
+                                {/* Example Calculation */}
+                                {settingsData.points_enabled && (
+                                    <div className="p-4 border-2 border-dashed border-amber-300 rounded-lg bg-amber-50/50 dark:bg-amber-900/5">
+                                        <div className="flex items-start gap-3">
+                                            <TrendingUp className="h-5 w-5 text-amber-600 mt-0.5" />
+                                            <div className="flex-1">
+                                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                                    Contoh Perhitungan
+                                                </p>
+                                                <div className="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                                                    <p>
+                                                        • Belanja Rp {exampleTransaction.toLocaleString('id-ID')} → 
+                                                        <span className="font-semibold text-amber-600"> {earnedPoints} poin</span>
+                                                    </p>
+                                                    <p>
+                                                        • {earnedPoints} poin dapat ditukar → 
+                                                        <span className="font-semibold text-green-600"> Rp {pointsValue.toLocaleString('id-ID')}</span>
+                                                    </p>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                )}
                             </CardContent>
                         </Card>
 
