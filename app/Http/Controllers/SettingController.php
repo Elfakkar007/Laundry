@@ -18,7 +18,6 @@ class SettingController extends Controller
         // Get all business logic settings
         $settings = Setting::whereIn('key', [
             'tax_rate',
-            'member_discount',
             'auto_apply_tax',
             'points_enabled',
             'points_earn_ratio',

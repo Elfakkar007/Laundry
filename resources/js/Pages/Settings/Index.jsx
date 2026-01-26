@@ -7,7 +7,7 @@ import { Label } from '@/Components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card';
 import { Switch } from '@/Components/ui/switch';
 import { toast } from 'sonner';
-import { Settings, Save, DollarSign, Award, Percent, Gift, TrendingUp } from 'lucide-react';
+import { Settings, Save, DollarSign, Percent, Gift, TrendingUp } from 'lucide-react';
 
 export default function SettingsIndex({ settings, flash }) {
     const [settingsData, setSettingsData] = useState({});
@@ -136,42 +136,6 @@ export default function SettingsIndex({ settings, flash }) {
                                 </div>
                             </CardContent>
                         </Card>
-
-                        {/* Member Settings */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <Award className="h-5 w-5" />
-                                    Pengaturan Member
-                                </CardTitle>
-                                <CardDescription>
-                                    Benefit untuk pelanggan member
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div>
-                                    <Label htmlFor="member_discount" className="flex items-center gap-2">
-                                        <Percent className="h-4 w-4" />
-                                        Diskon Member Otomatis (%)
-                                    </Label>
-                                    <Input
-                                        id="member_discount"
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        max="100"
-                                        value={settingsData.member_discount || ''}
-                                        onChange={(e) => updateSetting('member_discount', e.target.value)}
-                                        placeholder="0"
-                                        className="mt-1"
-                                    />
-                                    <p className="mt-1 text-xs text-gray-500">
-                                        Diskon yang diberikan otomatis untuk pelanggan member. Set 0 untuk tidak ada diskon otomatis.
-                                    </p>
-                                </div>
-                            </CardContent>
-                        </Card>
-
                         {/* NEW: Points System Settings */}
                         <Card className="border-2 border-amber-200 dark:border-amber-900">
                             <CardHeader className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/10 dark:to-yellow-900/10">

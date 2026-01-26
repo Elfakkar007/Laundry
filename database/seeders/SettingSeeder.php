@@ -26,12 +26,6 @@ class SettingSeeder extends Seeder
                 'type' => 'boolean',
                 'description' => 'Otomatis terapkan pajak pada setiap transaksi',
             ],
-            [
-                'key' => 'member_discount',
-                'value' => '0',
-                'type' => 'number',
-                'description' => 'Persentase diskon otomatis untuk member (%)',
-            ],
             
             // NEW: Points System Settings
             [
