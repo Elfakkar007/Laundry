@@ -20,40 +20,16 @@ class SettingSeeder extends Seeder
                 'description' => 'Persentase pajak (PPN) yang dikenakan pada transaksi',
             ],
             [
-                'key' => 'company_name',
-                'value' => 'Laundry Bersih',
-                'type' => 'string',
-                'description' => 'Nama perusahaan yang muncul di laporan dan struk',
-            ],
-            [
-                'key' => 'company_phone',
-                'value' => '021-12345678',
-                'type' => 'string',
-                'description' => 'Nomor telepon perusahaan',
-            ],
-            [
-                'key' => 'company_address',
-                'value' => 'Jl. Merdeka No. 123, Jakarta Pusat',
-                'type' => 'string',
-                'description' => 'Alamat perusahaan',
-            ],
-            [
                 'key' => 'auto_apply_tax',
                 'value' => 'true',
                 'type' => 'boolean',
                 'description' => 'Otomatis terapkan pajak pada setiap transaksi',
             ],
             [
-                'key' => 'member_discount_percent',
-                'value' => '5',
+                'key' => 'member_discount',
+                'value' => '0',
                 'type' => 'number',
-                'description' => 'Diskon otomatis untuk member (%)',
-            ],
-            [
-                'key' => 'points_per_transaction',
-                'value' => '100',
-                'type' => 'number',
-                'description' => 'Poin yang didapat member per Rp 100.000 transaksi',
+                'description' => 'Persentase diskon otomatis untuk member (%)',
             ],
         ];
 

@@ -16,7 +16,7 @@ class SurchargeController extends Controller
     public function index(Request $request): Response
     {
         $search = $request->input('search');
-        $statusFilter = $request->input('status_filter'); // 'all', 'active', 'inactive'
+        $statusFilter = $request->input('status_filter');
         
         $surcharges = Surcharge::query()
             ->when($search, function ($query, $search) {
@@ -47,15 +47,17 @@ class SurchargeController extends Controller
         $validated = $request->validate([
             'nama' => 'required|string|max:255',
             'nominal' => 'required|numeric|min:0',
-            'jenis' => 'required|in:fixed,percent',
+            'calculation_type' => 'required|in:fixed,percent,distance',
+            'min_order_total' => 'nullable|numeric|min:0',
             'keterangan' => 'nullable|string',
             'is_active' => 'boolean',
         ], [
             'nama.required' => 'Nama biaya tambahan wajib diisi',
             'nominal.required' => 'Nominal wajib diisi',
             'nominal.min' => 'Nominal harus lebih dari 0',
-            'jenis.required' => 'Jenis wajib dipilih',
-            'jenis.in' => 'Jenis tidak valid',
+            'calculation_type.required' => 'Tipe perhitungan wajib dipilih',
+            'calculation_type.in' => 'Tipe perhitungan tidak valid',
+            'min_order_total.min' => 'Minimal transaksi harus lebih dari 0',
         ]);
 
         try {
@@ -75,15 +77,17 @@ class SurchargeController extends Controller
         $validated = $request->validate([
             'nama' => 'required|string|max:255',
             'nominal' => 'required|numeric|min:0',
-            'jenis' => 'required|in:fixed,percent',
+            'calculation_type' => 'required|in:fixed,percent,distance',
+            'min_order_total' => 'nullable|numeric|min:0',
             'keterangan' => 'nullable|string',
             'is_active' => 'boolean',
         ], [
             'nama.required' => 'Nama biaya tambahan wajib diisi',
             'nominal.required' => 'Nominal wajib diisi',
             'nominal.min' => 'Nominal harus lebih dari 0',
-            'jenis.required' => 'Jenis wajib dipilih',
-            'jenis.in' => 'Jenis tidak valid',
+            'calculation_type.required' => 'Tipe perhitungan wajib dipilih',
+            'calculation_type.in' => 'Tipe perhitungan tidak valid',
+            'min_order_total.min' => 'Minimal transaksi harus lebih dari 0',
         ]);
 
         try {

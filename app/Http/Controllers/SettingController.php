@@ -15,7 +15,12 @@ class SettingController extends Controller
      */
     public function index(): Response
     {
-        $settings = Setting::orderBy('key')->get();
+        // Only get business logic settings
+        $settings = Setting::whereIn('key', [
+            'tax_rate',
+            'member_discount',
+            'auto_apply_tax'
+        ])->get();
 
         return Inertia::render('Settings/Index', [
             'settings' => $settings,

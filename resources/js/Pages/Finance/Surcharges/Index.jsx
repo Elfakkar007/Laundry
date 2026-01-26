@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Switch } from '@/Components/ui/switch';
 import { toast } from 'sonner';
-import { Pencil, Trash2, Plus, Search, DollarSign, Percent, CreditCard } from 'lucide-react';
+import { Pencil, Trash2, Plus, Search, DollarSign, Percent, CreditCard, MapPin, Gift, Truck } from 'lucide-react';
 
 export default function SurchargesIndex({ surcharges, filters, flash }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -21,10 +21,14 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
     const { data, setData, post, put, processing, errors, reset } = useForm({
         nama: '',
         nominal: '',
-        jenis: 'fixed',
+        calculation_type: 'fixed',
+        min_order_total: '',
         keterangan: '',
         is_active: true,
     });
+
+    // State for free shipping toggle
+    const [enableFreeShipping, setEnableFreeShipping] = useState(false);
 
     useEffect(() => {
         if (flash?.success) {
@@ -38,6 +42,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
     const openCreateDialog = () => {
         setEditingSurcharge(null);
         reset();
+        setEnableFreeShipping(false);
         setIsDialogOpen(true);
     };
 
@@ -46,28 +51,39 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
         setData({
             nama: surcharge.nama,
             nominal: surcharge.nominal,
-            jenis: surcharge.jenis,
+            calculation_type: surcharge.calculation_type,
+            min_order_total: surcharge.min_order_total || '',
             keterangan: surcharge.keterangan || '',
             is_active: surcharge.is_active,
         });
+        setEnableFreeShipping(!!surcharge.min_order_total);
         setIsDialogOpen(true);
     };
 
     const closeDialog = () => {
         setIsDialogOpen(false);
         setEditingSurcharge(null);
+        setEnableFreeShipping(false);
         reset();
     };
 
     const handleSubmit = (e) => {
         e.preventDefault();
 
+        // If free shipping is disabled, clear min_order_total
+        const submitData = {
+            ...data,
+            min_order_total: enableFreeShipping ? data.min_order_total : null
+        };
+
         if (editingSurcharge) {
             put(route('surcharges.update', editingSurcharge.id), {
+                data: submitData,
                 onSuccess: () => closeDialog(),
             });
         } else {
             post(route('surcharges.store'), {
+                data: submitData,
                 onSuccess: () => closeDialog(),
             });
         }
@@ -105,15 +121,59 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
         });
     };
 
-    const formatNominal = (nominal, jenis) => {
-        if (jenis === 'percent') {
-            return `${nominal}%`;
+    const formatNominal = (nominal, type) => {
+        switch(type) {
+            case 'percent':
+                return `${nominal}%`;
+            case 'distance':
+                return `Rp ${new Intl.NumberFormat('id-ID').format(nominal)}/km`;
+            case 'fixed':
+            default:
+                return `Rp ${new Intl.NumberFormat('id-ID').format(nominal)}`;
         }
+    };
+
+    const formatRupiah = (amount) => {
+        if (!amount) return '-';
         return new Intl.NumberFormat('id-ID', {
             style: 'currency',
             currency: 'IDR',
             minimumFractionDigits: 0,
-        }).format(nominal);
+        }).format(amount);
+    };
+
+    const getTypeIcon = (type) => {
+        switch(type) {
+            case 'percent':
+                return <Percent className="h-3 w-3" />;
+            case 'distance':
+                return <MapPin className="h-3 w-3" />;
+            case 'fixed':
+            default:
+                return <DollarSign className="h-3 w-3" />;
+        }
+    };
+
+    const getTypeBadge = (type) => {
+        const variants = {
+            fixed: { label: 'Nominal Tetap', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400' },
+            percent: { label: 'Persentase', className: 'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400' },
+            distance: { label: 'Per KM', className: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' },
+        };
+        return variants[type] || variants.fixed;
+    };
+
+    // Get label for nominal input based on calculation type
+    const getNominalLabel = () => {
+        switch(data.calculation_type) {
+            case 'percent':
+                return 'Persentase (%)';
+            case 'distance':
+                return 'Harga per KM (Rp)';
+            case 'fixed':
+            default:
+                return 'Nominal (Rp)';
+        }
     };
 
     return (
@@ -170,8 +230,9 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                         <TableRow>
                                             <TableHead className="w-[50px]">No</TableHead>
                                             <TableHead>Nama Biaya</TableHead>
-                                            <TableHead>Jenis</TableHead>
+                                            <TableHead className="text-center">Tipe</TableHead>
                                             <TableHead className="text-right">Nominal</TableHead>
+                                            <TableHead className="text-center">Gratis Ongkir</TableHead>
                                             <TableHead>Keterangan</TableHead>
                                             <TableHead className="text-center">Status</TableHead>
                                             <TableHead className="text-right w-[150px]">Aksi</TableHead>
@@ -180,7 +241,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                     <TableBody>
                                         {surcharges.data.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                                                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                                                     <CreditCard className="h-12 w-12 mx-auto mb-2 opacity-20" />
                                                     <p>Tidak ada data biaya tambahan</p>
                                                 </TableCell>
@@ -189,24 +250,40 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                             surcharges.data.map((surcharge, index) => (
                                                 <TableRow key={surcharge.id}>
                                                     <TableCell>{surcharges.from + index}</TableCell>
-                                                    <TableCell className="font-medium">{surcharge.nama}</TableCell>
-                                                    <TableCell>
-                                                        <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                                                            {surcharge.jenis === 'percent' ? (
-                                                                <>
-                                                                    <Percent className="h-3 w-3" />
-                                                                    Persentase
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <DollarSign className="h-3 w-3" />
-                                                                    Nominal
-                                                                </>
+                                                    <TableCell className="font-medium">
+                                                        <div className="flex items-center gap-2">
+                                                            {surcharge.calculation_type === 'distance' && (
+                                                                <Truck className="h-4 w-4 text-green-600" />
                                                             )}
+                                                            {surcharge.nama}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Badge 
+                                                            variant="outline" 
+                                                            className={`flex items-center gap-1 w-fit mx-auto ${getTypeBadge(surcharge.calculation_type).className}`}
+                                                        >
+                                                            {getTypeIcon(surcharge.calculation_type)}
+                                                            {getTypeBadge(surcharge.calculation_type).label}
                                                         </Badge>
                                                     </TableCell>
                                                     <TableCell className="text-right font-medium">
-                                                        {formatNominal(surcharge.nominal, surcharge.jenis)}
+                                                        {formatNominal(surcharge.nominal, surcharge.calculation_type)}
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        {surcharge.min_order_total ? (
+                                                            <div className="flex flex-col items-center gap-1">
+                                                                <Badge variant="outline" className="border-green-500 text-green-600 flex items-center gap-1">
+                                                                    <Gift className="h-3 w-3" />
+                                                                    Aktif
+                                                                </Badge>
+                                                                <span className="text-xs text-gray-500">
+                                                                    Min. {formatRupiah(surcharge.min_order_total)}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <Badge variant="secondary">Tidak</Badge>
+                                                        )}
                                                     </TableCell>
                                                     <TableCell className="max-w-xs truncate text-sm text-gray-600">
                                                         {surcharge.keterangan || '-'}
@@ -262,7 +339,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="max-w-md">
+                <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             {editingSurcharge ? (
@@ -287,7 +364,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                     id="nama"
                                     value={data.nama}
                                     onChange={(e) => setData('nama', e.target.value)}
-                                    placeholder="Contoh: Antar Jemput"
+                                    placeholder="Contoh: Ongkir, Biaya Parkir, Admin Fee"
                                     className={errors.nama ? 'border-red-500' : ''}
                                 />
                                 {errors.nama && (
@@ -296,28 +373,55 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                             </div>
 
                             <div>
-                                <Label htmlFor="jenis">Jenis *</Label>
+                                <Label htmlFor="calculation_type">Tipe Perhitungan *</Label>
                                 <Select
-                                    value={data.jenis}
-                                    onValueChange={(value) => setData('jenis', value)}
+                                    value={data.calculation_type}
+                                    onValueChange={(value) => setData('calculation_type', value)}
                                 >
-                                    <SelectTrigger className={errors.jenis ? 'border-red-500' : ''}>
-                                        <SelectValue placeholder="Pilih Jenis" />
+                                    <SelectTrigger className={errors.calculation_type ? 'border-red-500' : ''}>
+                                        <SelectValue placeholder="Pilih Tipe" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="fixed">Nominal Tetap (Rp)</SelectItem>
-                                        <SelectItem value="percent">Persentase (%)</SelectItem>
+                                        <SelectItem value="fixed">
+                                            <div className="flex items-center gap-2">
+                                                <DollarSign className="h-4 w-4" />
+                                                Nominal Tetap (Rp)
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="percent">
+                                            <div className="flex items-center gap-2">
+                                                <Percent className="h-4 w-4" />
+                                                Persentase dari Subtotal (%)
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="distance">
+                                            <div className="flex items-center gap-2">
+                                                <MapPin className="h-4 w-4" />
+                                                Per Kilometer (Rp/km)
+                                            </div>
+                                        </SelectItem>
                                     </SelectContent>
                                 </Select>
-                                {errors.jenis && (
-                                    <p className="mt-1 text-sm text-red-500">{errors.jenis}</p>
+                                {errors.calculation_type && (
+                                    <p className="mt-1 text-sm text-red-500">{errors.calculation_type}</p>
                                 )}
+                                
+                                {/* Helper Text */}
+                                <div className="mt-2 text-xs text-gray-500 space-y-1">
+                                    {data.calculation_type === 'fixed' && (
+                                        <p>• Nominal tetap yang akan ditambahkan ke transaksi</p>
+                                    )}
+                                    {data.calculation_type === 'percent' && (
+                                        <p>• Persentase dari subtotal transaksi (sebelum pajak)</p>
+                                    )}
+                                    {data.calculation_type === 'distance' && (
+                                        <p>• Biaya per kilometer (cocok untuk ongkir)</p>
+                                    )}
+                                </div>
                             </div>
 
                             <div>
-                                <Label htmlFor="nominal">
-                                    {data.jenis === 'percent' ? 'Persentase (%)' : 'Nominal (Rp)'}  *
-                                </Label>
+                                <Label htmlFor="nominal">{getNominalLabel()} *</Label>
                                 <Input
                                     id="nominal"
                                     type="number"
@@ -330,6 +434,55 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                 />
                                 {errors.nominal && (
                                     <p className="mt-1 text-sm text-red-500">{errors.nominal}</p>
+                                )}
+                            </div>
+
+                            {/* Free Shipping Logic */}
+                            <div className="space-y-3 p-4 border rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/10 dark:to-emerald-900/10">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <Gift className={`h-5 w-5 ${enableFreeShipping ? 'text-green-600' : 'text-gray-400'}`} />
+                                        <div>
+                                            <Label htmlFor="enable_free_shipping" className="cursor-pointer font-semibold">
+                                                Aktifkan Gratis Ongkir
+                                            </Label>
+                                            <p className="text-xs text-gray-500">
+                                                Biaya gratis jika subtotal mencapai minimal tertentu
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <Switch
+                                        id="enable_free_shipping"
+                                        checked={enableFreeShipping}
+                                        onCheckedChange={(checked) => {
+                                            setEnableFreeShipping(checked);
+                                            if (!checked) {
+                                                setData('min_order_total', '');
+                                            }
+                                        }}
+                                    />
+                                </div>
+
+                                {enableFreeShipping && (
+                                    <div>
+                                        <Label htmlFor="min_order_total">Minimal Transaksi (Rp) *</Label>
+                                        <Input
+                                            id="min_order_total"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={data.min_order_total}
+                                            onChange={(e) => setData('min_order_total', e.target.value)}
+                                            placeholder="Contoh: 100000"
+                                            className={errors.min_order_total ? 'border-red-500' : ''}
+                                        />
+                                        {errors.min_order_total && (
+                                            <p className="mt-1 text-sm text-red-500">{errors.min_order_total}</p>
+                                        )}
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Jika subtotal ≥ nilai ini, biaya akan menjadi Rp 0 (GRATIS)
+                                        </p>
+                                    </div>
                                 )}
                             </div>
 

@@ -9,14 +9,16 @@ class Surcharge extends Model
 {
     use HasFactory;
 
-    // Constants untuk Jenis
-    public const JENIS_FIXED = 'fixed';
-    public const JENIS_PERCENT = 'percent';
+    // Constants untuk Calculation Type
+    public const TYPE_FIXED = 'fixed';
+    public const TYPE_PERCENT = 'percent';
+    public const TYPE_DISTANCE = 'distance';
 
     protected $fillable = [
         'nama',
         'nominal',
-        'jenis',
+        'calculation_type',
+        'min_order_total',
         'keterangan',
         'is_active',
     ];
@@ -25,6 +27,7 @@ class Surcharge extends Model
     {
         return [
             'nominal' => 'decimal:2',
+            'min_order_total' => 'decimal:2',
             'is_active' => 'boolean',
         ];
     }
@@ -38,26 +41,46 @@ class Surcharge extends Model
     }
 
     /**
-     * Helper untuk mendapatkan jenis yang tersedia
+     * Helper untuk mendapatkan calculation types
      */
-    public static function getAvailableJenis(): array
+    public static function getAvailableTypes(): array
     {
         return [
-            self::JENIS_FIXED,
-            self::JENIS_PERCENT,
+            self::TYPE_FIXED,
+            self::TYPE_PERCENT,
+            self::TYPE_DISTANCE,
         ];
     }
 
     /**
-     * Calculate surcharge amount based on subtotal
+     * Calculate surcharge amount based on subtotal and distance
+     * 
+     * @param float $subtotal
+     * @param float|null $distance Distance in KM (for distance-based)
+     * @return float
      */
-    public function calculateAmount(float $subtotal): float
+    public function calculateAmount(float $subtotal, ?float $distance = null): float
     {
-        if ($this->jenis === self::JENIS_PERCENT) {
-            return ($subtotal * $this->nominal) / 100;
+        // Check free shipping logic
+        if ($this->min_order_total && $subtotal >= $this->min_order_total) {
+            return 0; // GRATIS
         }
-        
-        return (float) $this->nominal;
+
+        switch ($this->calculation_type) {
+            case self::TYPE_PERCENT:
+                return ($subtotal * $this->nominal) / 100;
+            
+            case self::TYPE_DISTANCE:
+                // Jika tidak ada distance, return 0
+                if (!$distance || $distance <= 0) {
+                    return 0;
+                }
+                return $this->nominal * $distance;
+            
+            case self::TYPE_FIXED:
+            default:
+                return (float) $this->nominal;
+        }
     }
 
     /**
@@ -65,10 +88,24 @@ class Surcharge extends Model
      */
     public function getFormattedNominalAttribute(): string
     {
-        if ($this->jenis === self::JENIS_PERCENT) {
-            return $this->nominal . '%';
+        switch ($this->calculation_type) {
+            case self::TYPE_PERCENT:
+                return $this->nominal . '%';
+            
+            case self::TYPE_DISTANCE:
+                return 'Rp ' . number_format($this->nominal, 0, ',', '.') . '/km';
+            
+            case self::TYPE_FIXED:
+            default:
+                return 'Rp ' . number_format($this->nominal, 0, ',', '.');
         }
-        
-        return 'Rp ' . number_format($this->nominal, 0, ',', '.');
+    }
+
+    /**
+     * Check if has free shipping
+     */
+    public function hasFreeShipping(): bool
+    {
+        return $this->min_order_total !== null && $this->min_order_total > 0;
     }
 }
