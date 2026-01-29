@@ -10,6 +10,7 @@ use App\Http\Controllers\SurchargeController;
 use App\Http\Controllers\PromoController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\TransaksiController;
 use Illuminate\Support\Facades\Route;
 
 // Redirect root ke login
@@ -148,6 +149,43 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/{customer}/adjust-points', [CustomerController::class, 'adjustPoints'])
             ->middleware('permission:customer.update')
             ->name('adjust-points');
+    });
+
+    // ========================================
+    // TRANSAKSI MANAGEMENT - Admin & Kasir (NEW!)
+    // ========================================
+    Route::middleware(['role:admin|kasir'])->prefix('transaksi')->name('transaksi.')->group(function () {
+        Route::get('/', [TransaksiController::class, 'index'])
+            ->middleware('permission:transaksi.view')
+            ->name('index');
+        
+        Route::get('/create', [TransaksiController::class, 'create'])
+            ->middleware('permission:transaksi.create')
+            ->name('create');
+        
+        Route::get('/outlet/{outlet}/data', [TransaksiController::class, 'getOutletData'])
+            ->middleware('permission:transaksi.create')
+            ->name('outlet-data');
+        
+        Route::post('/', [TransaksiController::class, 'store'])
+            ->middleware('permission:transaksi.create')
+            ->name('store');
+        
+        Route::get('/{transaksi}', [TransaksiController::class, 'show'])
+            ->middleware('permission:transaksi.detail')
+            ->name('show');
+        
+        Route::put('/{transaksi}/status', [TransaksiController::class, 'updateStatus'])
+            ->middleware('permission:transaksi.create')
+            ->name('update-status');
+        
+        Route::post('/{transaksi}/payment', [TransaksiController::class, 'processPayment'])
+            ->middleware('permission:transaksi.create')
+            ->name('process-payment');
+        
+        Route::delete('/{transaksi}', [TransaksiController::class, 'destroy'])
+            ->middleware('permission:transaksi.create')
+            ->name('destroy');
     });
 
     // ========================================

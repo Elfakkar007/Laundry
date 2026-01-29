@@ -51,6 +51,13 @@ export default function AuthenticatedLayout({ header, children }) {
             show: true, // Always show
         },
         {
+            name: 'Transaksi',
+            href: route('transaksi.index'),
+            icon: FileText,
+            active: route().current('transaksi.*'),
+            show: hasPermission('transaksi.view') || hasPermission('transaksi.create'),
+        },
+        {
             name: 'Master Data',
             icon: Sparkles,
             isGroup: true,
