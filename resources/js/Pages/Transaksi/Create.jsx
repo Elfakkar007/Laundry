@@ -71,6 +71,20 @@ export default function TransaksiCreate({
         earned_points: 0,
     });
 
+    // Tambahkan useEffect ini di bagian atas component (setelah useState)
+    useEffect(() => {
+        if (selectedCustomer) {
+            setData('id_customer', selectedCustomer.id);
+        } else {
+            setData('id_customer', null);
+        }
+    }, [selectedCustomer]);
+
+    useEffect(() => {
+    const validItems = items.filter(item => item.id_paket);
+    console.log('✅ Valid items dengan paket:', validItems);
+    }, [items]);
+
     // FIXED: Form initialization
     const { data, setData, post, processing, errors } = useForm({
         id_outlet: currentOutletId,
@@ -144,9 +158,9 @@ export default function TransaksiCreate({
     const removeItem = (id) => {
         setItems(items.filter(item => item.id !== id));
     };
-
     // Update Item
     const updateItem = (id, field, value) => {
+        console.log('🔄 Update Item:', { id, field, value });
         setItems(items.map(item => 
             item.id === id ? { ...item, [field]: value } : item
         ));
@@ -270,20 +284,75 @@ export default function TransaksiCreate({
         });
     };
 
-    // FIXED: Handle Save Later
+  // Ganti fungsi handleSaveLater dengan ini
     const handleSaveLater = () => {
         if (!validateForm()) return;
 
-        // Prepare items without temporary IDs
         const cleanItems = items
-            .filter(item => item.id_paket)
+            .filter(item => item.id_paket && 
+                        item.id_paket !== '' && 
+                        item.id_paket !== 'none' && 
+                        item.id_paket !== 0 &&
+                        !isNaN(item.id_paket))
             .map(({ id, ...rest }) => ({
-                id_paket: rest.id_paket,
-                qty: rest.qty,
+                id_paket: parseInt(rest.id_paket),
+                qty: parseFloat(rest.qty),
                 keterangan: rest.keterangan || null
             }));
 
-        console.log('Submitting data:', {
+        // GUNAKAN router.post, BUKAN post dari useForm
+        router.post(route('transaksi.store'), {
+            // Masukkan semua data payload di sini (argumen ke-2)
+            id_outlet: currentOutletId,
+            id_customer: selectedCustomer.id,
+            tgl: data.tgl,
+            batas_waktu: data.batas_waktu,
+            items: cleanItems, // Item yang sudah dibersihkan kini akan terkirim
+            surcharges: selectedSurcharges,
+            surcharge_distances: surchargeDistances,
+            id_promo: selectedPromo,
+            redeem_points: redeemPoints,
+            status: data.status,
+            payment_action: 'bayar_nanti',
+            jumlah_bayar: null,
+        }, {
+            // Options (argumen ke-3)
+            onError: (errors) => {
+                console.error('❌ Validation errors:', errors);
+                // Opsional: Jika Anda ingin toast error muncul
+                Object.values(errors).forEach(error => toast.error(error));
+            }
+        });
+    };
+    // FIXED: Handle Pay Now
+    const handlePayNow = () => {
+        if (!validateForm()) return;
+        setPaymentAmount(calculation.total_akhir.toString());
+        setShowPaymentDialog(true);
+    };
+
+  // Ganti fungsi handlePaymentSubmit dengan ini
+    const handlePaymentSubmit = () => {
+        const amount = parseFloat(paymentAmount);
+        if (isNaN(amount) || amount < calculation.total_akhir) {
+            toast.error('Jumlah bayar kurang dari total tagihan!');
+            return;
+        }
+
+        const cleanItems = items
+            .filter(item => item.id_paket && 
+                        item.id_paket !== '' && 
+                        item.id_paket !== 'none' && 
+                        item.id_paket !== 0 &&
+                        !isNaN(item.id_paket))
+            .map(({ id, ...rest }) => ({
+                id_paket: parseInt(rest.id_paket),
+                qty: parseFloat(rest.qty),
+                keterangan: rest.keterangan || null
+            }));
+
+        // GUNAKAN router.post di sini juga
+        router.post(route('transaksi.store'), {
             id_outlet: currentOutletId,
             id_customer: selectedCustomer.id,
             tgl: data.tgl,
@@ -294,74 +363,41 @@ export default function TransaksiCreate({
             id_promo: selectedPromo,
             redeem_points: redeemPoints,
             status: data.status,
-            payment_action: 'bayar_nanti',
-            jumlah_bayar: null,
-        });
-
-        post(route('transaksi.store'), {
-            data: {
-                id_outlet: currentOutletId,
-                id_customer: selectedCustomer.id,
-                tgl: data.tgl,
-                batas_waktu: data.batas_waktu,
-                items: cleanItems,
-                surcharges: selectedSurcharges,
-                surcharge_distances: surchargeDistances,
-                id_promo: selectedPromo,
-                redeem_points: redeemPoints,
-                status: data.status,
-                payment_action: 'bayar_nanti',
-                jumlah_bayar: null,
-            },
+            payment_action: 'bayar_lunas',
+            jumlah_bayar: amount,
+        }, {
+            onSuccess: () => setShowPaymentDialog(false),
             onError: (errors) => {
-                console.error('Validation errors:', errors);
+                Object.values(errors).forEach(error => toast.error(error));
             }
         });
     };
-
-    // FIXED: Handle Pay Now
-    const handlePayNow = () => {
-        if (!validateForm()) return;
-        setPaymentAmount(calculation.total_akhir.toString());
-        setShowPaymentDialog(true);
-    };
-
-    // FIXED: Handle Payment Submit
-    const handlePaymentSubmit = () => {
-        const amount = parseFloat(paymentAmount);
-        if (isNaN(amount) || amount < calculation.total_akhir) {
-            toast.error('Jumlah bayar kurang dari total tagihan!');
-            return;
-        }
-
-        const cleanItems = items
-            .filter(item => item.id_paket)
-            .map(({ id, ...rest }) => ({
-                id_paket: rest.id_paket,
-                qty: rest.qty,
-                keterangan: rest.keterangan || null
-            }));
-
-        post(route('transaksi.store'), {
-            data: {
-                id_outlet: currentOutletId,
-                id_customer: selectedCustomer.id,
-                tgl: data.tgl,
-                batas_waktu: data.batas_waktu,
-                items: cleanItems,
-                surcharges: selectedSurcharges,
-                surcharge_distances: surchargeDistances,
-                id_promo: selectedPromo,
-                redeem_points: redeemPoints,
-                status: data.status,
-                payment_action: 'bayar_lunas',
-                jumlah_bayar: amount,
-            }
-        });
-    };
-
     // Validate Form
     const validateForm = () => {
+        console.log('=== VALIDASI FORM ===');
+        console.log('currentOutletId:', currentOutletId);
+        console.log('selectedCustomer:', selectedCustomer);
+        console.log('items:', items);
+        
+        // Filter lebih ketat untuk paket
+        const validItems = items.filter(item => {
+            return item.id_paket && 
+                item.id_paket !== '' && 
+                item.id_paket !== 'none' && 
+                item.id_paket !== 0 &&
+                !isNaN(item.id_paket);
+        });
+        
+        console.log('✅ Valid items dengan paket:', validItems);
+        console.log('items dengan id_paket (detail):', items.map(item => ({
+            id: item.id,
+            id_paket: item.id_paket,
+            qty: item.qty,
+            tipe_data: typeof item.id_paket,
+            is_valid: item.id_paket && item.id_paket !== '' && item.id_paket !== 'none'
+        })));
+        console.log('batas_waktu:', data.batas_waktu);
+
         if (!currentOutletId) {
             toast.error('Pilih outlet terlebih dahulu!');
             return false;
@@ -372,7 +408,7 @@ export default function TransaksiCreate({
             return false;
         }
 
-        if (items.filter(item => item.id_paket).length === 0) {
+        if (validItems.length === 0) {
             toast.error('Tambahkan minimal 1 item paket!');
             return false;
         }
@@ -417,7 +453,7 @@ export default function TransaksiCreate({
     return (
         <AuthenticatedLayout
             header={
-                <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
                     <Button
                         variant="outline"
                         size="icon"
@@ -556,6 +592,7 @@ export default function TransaksiCreate({
                                                             } else {
                                                                 const customer = customers.find(c => c.id === parseInt(value));
                                                                 setSelectedCustomer(customer);
+                                                                setData('id_customer', customer.id); 
                                                                 setRedeemPoints(0);
                                                             }
                                                         }}
@@ -682,7 +719,14 @@ export default function TransaksiCreate({
                                                                     <Label>Paket *</Label>
                                                                     <Select
                                                                         value={item.id_paket?.toString() || 'none'}
-                                                                        onValueChange={(value) => updateItem(item.id, 'id_paket', value === 'none' ? '' : value)}
+                                                                        onValueChange={(value) => {
+                                                                            if (value === 'none') {
+                                                                                updateItem(item.id, 'id_paket', '');
+                                                                            } else {
+                                                                                // ⬇️ PENTING: Konversi ke INTEGER
+                                                                                updateItem(item.id, 'id_paket', parseInt(value));
+                                                                            }
+                                                                        }}
                                                                     >
                                                                         <SelectTrigger>
                                                                             <SelectValue placeholder="Pilih Paket" />
