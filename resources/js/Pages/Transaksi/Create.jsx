@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/Components/ui/dialog';
 import { Separator } from '@/Components/ui/separator';
+import { Alert, AlertDescription } from '@/Components/ui/alert';
 import { toast } from 'sonner';
 import { 
     ArrowLeft, Plus, Trash2, Store, User, Calendar, Clock, 
@@ -28,7 +29,8 @@ export default function TransaksiCreate({
     isKasir,
     userOutlet,
     userName,
-    flash 
+    flash,
+    errors: serverErrors
 }) {
     // State Management
     const [currentOutletId, setCurrentOutletId] = useState(selectedOutletId);
@@ -69,7 +71,8 @@ export default function TransaksiCreate({
         earned_points: 0,
     });
 
-    const { data, setData, post, processing, errors, reset } = useForm({
+    // FIXED: Form initialization
+    const { data, setData, post, processing, errors } = useForm({
         id_outlet: currentOutletId,
         id_customer: null,
         tgl: new Date().toISOString().split('T')[0],
@@ -96,6 +99,15 @@ export default function TransaksiCreate({
         if (flash?.error) toast.error(flash.error);
     }, [flash]);
 
+    // Show server errors
+    useEffect(() => {
+        if (serverErrors && Object.keys(serverErrors).length > 0) {
+            Object.values(serverErrors).forEach(error => {
+                toast.error(error);
+            });
+        }
+    }, [serverErrors]);
+
     // Handle Outlet Change (Admin Only)
     const handleOutletChange = async (outletId) => {
         if (isKasir) return;
@@ -105,7 +117,7 @@ export default function TransaksiCreate({
             const response = await fetch(route('transaksi.outlet-data', outletId));
             const data = await response.json();
 
-            setCurrentOutletId(outletId);
+            setCurrentOutletId(parseInt(outletId));
             setCurrentPakets(data.pakets);
             setCurrentInvoiceCode(data.invoiceCode);
             setItems([]);
@@ -258,16 +270,25 @@ export default function TransaksiCreate({
         });
     };
 
-    // Handle Save Later
+    // FIXED: Handle Save Later
     const handleSaveLater = () => {
         if (!validateForm()) return;
 
-        const submissionData = {
+        // Prepare items without temporary IDs
+        const cleanItems = items
+            .filter(item => item.id_paket)
+            .map(({ id, ...rest }) => ({
+                id_paket: rest.id_paket,
+                qty: rest.qty,
+                keterangan: rest.keterangan || null
+            }));
+
+        console.log('Submitting data:', {
             id_outlet: currentOutletId,
             id_customer: selectedCustomer.id,
             tgl: data.tgl,
             batas_waktu: data.batas_waktu,
-            items: items.filter(item => item.id_paket).map(({ id, ...rest }) => rest),
+            items: cleanItems,
             surcharges: selectedSurcharges,
             surcharge_distances: surchargeDistances,
             id_promo: selectedPromo,
@@ -275,21 +296,37 @@ export default function TransaksiCreate({
             status: data.status,
             payment_action: 'bayar_nanti',
             jumlah_bayar: null,
-        };
+        });
 
         post(route('transaksi.store'), {
-            data: submissionData
+            data: {
+                id_outlet: currentOutletId,
+                id_customer: selectedCustomer.id,
+                tgl: data.tgl,
+                batas_waktu: data.batas_waktu,
+                items: cleanItems,
+                surcharges: selectedSurcharges,
+                surcharge_distances: surchargeDistances,
+                id_promo: selectedPromo,
+                redeem_points: redeemPoints,
+                status: data.status,
+                payment_action: 'bayar_nanti',
+                jumlah_bayar: null,
+            },
+            onError: (errors) => {
+                console.error('Validation errors:', errors);
+            }
         });
     };
 
-    // Handle Pay Now
+    // FIXED: Handle Pay Now
     const handlePayNow = () => {
         if (!validateForm()) return;
         setPaymentAmount(calculation.total_akhir.toString());
         setShowPaymentDialog(true);
     };
 
-    // Handle Payment Submit
+    // FIXED: Handle Payment Submit
     const handlePaymentSubmit = () => {
         const amount = parseFloat(paymentAmount);
         if (isNaN(amount) || amount < calculation.total_akhir) {
@@ -297,23 +334,29 @@ export default function TransaksiCreate({
             return;
         }
 
-        const submissionData = {
-            id_outlet: currentOutletId,
-            id_customer: selectedCustomer.id,
-            tgl: data.tgl,
-            batas_waktu: data.batas_waktu,
-            items: items.filter(item => item.id_paket).map(({ id, ...rest }) => rest),
-            surcharges: selectedSurcharges,
-            surcharge_distances: surchargeDistances,
-            id_promo: selectedPromo,
-            redeem_points: redeemPoints,
-            status: data.status,
-            payment_action: 'bayar_lunas',
-            jumlah_bayar: amount,
-        };
+        const cleanItems = items
+            .filter(item => item.id_paket)
+            .map(({ id, ...rest }) => ({
+                id_paket: rest.id_paket,
+                qty: rest.qty,
+                keterangan: rest.keterangan || null
+            }));
 
         post(route('transaksi.store'), {
-            data: submissionData
+            data: {
+                id_outlet: currentOutletId,
+                id_customer: selectedCustomer.id,
+                tgl: data.tgl,
+                batas_waktu: data.batas_waktu,
+                items: cleanItems,
+                surcharges: selectedSurcharges,
+                surcharge_distances: surchargeDistances,
+                id_promo: selectedPromo,
+                redeem_points: redeemPoints,
+                status: data.status,
+                payment_action: 'bayar_lunas',
+                jumlah_bayar: amount,
+            }
         });
     };
 
@@ -395,6 +438,16 @@ export default function TransaksiCreate({
 
             <div className="py-12">
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8 space-y-6">
+                    {/* ADMIN WARNING: No outlet selected */}
+                    {!isKasir && !currentOutletId && (
+                        <Alert variant="destructive">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>
+                                <strong>Peringatan:</strong> Pilih outlet terlebih dahulu untuk memulai transaksi!
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
                     {/* Header Card - Outlet & Invoice */}
                     <Card className="border-2 border-blue-200 dark:border-blue-900">
                         <CardContent className="pt-6">
@@ -435,15 +488,16 @@ export default function TransaksiCreate({
                                     <div>
                                         <Label htmlFor="outlet">Outlet *</Label>
                                         <Select 
-                                            value={currentOutletId?.toString()} 
-                                            onValueChange={(value) => handleOutletChange(parseInt(value))}
+                                            value={currentOutletId?.toString() || 'none'} 
+                                            onValueChange={(value) => value !== 'none' && handleOutletChange(parseInt(value))}
                                             disabled={loadingOutletData}
                                         >
-                                            <SelectTrigger>
+                                            <SelectTrigger className={!currentOutletId ? 'border-red-500' : ''}>
                                                 <SelectValue placeholder="Pilih Outlet" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {outlets.map((outlet) => (
+                                                <SelectItem value="none">-- Pilih Outlet --</SelectItem>
+                                                {outlets?.map((outlet) => (
                                                     <SelectItem key={outlet.id} value={outlet.id.toString()}>
                                                         {outlet.nama}
                                                     </SelectItem>
@@ -455,457 +509,474 @@ export default function TransaksiCreate({
                                         </p>
                                     </div>
                                     <div className="flex items-end">
-                                        <div className="flex-1 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 rounded-lg border border-blue-200 dark:border-blue-900">
-                                            <p className="text-xs text-gray-500">Invoice Code</p>
-                                            <p className="text-xl font-bold text-blue-600">
-                                                {currentInvoiceCode}
-                                            </p>
-                                            <p className="text-xs text-gray-400">Auto-generated</p>
-                                        </div>
+                                        {currentInvoiceCode ? (
+                                            <div className="flex-1 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 rounded-lg border border-blue-200 dark:border-blue-900">
+                                                <p className="text-xs text-gray-500">Invoice Code</p>
+                                                <p className="text-xl font-bold text-blue-600">
+                                                    {currentInvoiceCode}
+                                                </p>
+                                                <p className="text-xs text-gray-400">Auto-generated</p>
+                                            </div>
+                                        ) : (
+                                            <div className="flex-1 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700">
+                                                <p className="text-xs text-gray-500">Invoice Code</p>
+                                                <p className="text-sm text-gray-400">Pilih outlet terlebih dahulu</p>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
                         </CardContent>
                     </Card>
 
-                    {/* Main Content Grid */}
-                    <div className="grid lg:grid-cols-3 gap-6">
-                        {/* LEFT COLUMN - Form Inputs */}
-                        <div className="lg:col-span-2 space-y-6">
-                            {/* Customer & Date Section */}
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="flex items-center gap-2">
-                                        <User className="h-5 w-5" />
-                                        Informasi Customer & Jadwal
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div>
-                                        <Label>Customer *</Label>
-                                        <div className="flex gap-2">
-                                            <Select 
-                                                value={selectedCustomer?.id?.toString() || 'none'} 
-                                                onValueChange={(value) => {
-                                                    if (value === 'none') {
-                                                        setSelectedCustomer(null);
-                                                    } else {
-                                                        const customer = customers.find(c => c.id === parseInt(value));
-                                                        setSelectedCustomer(customer);
-                                                        setRedeemPoints(0);
-                                                    }
-                                                }}
-                                            >
-                                                <SelectTrigger className="flex-1">
-                                                    <SelectValue placeholder="Pilih Customer" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="none">-- Pilih Customer --</SelectItem>
-                                                    {customers.map((customer) => (
-                                                        <SelectItem key={customer.id} value={customer.id.toString()}>
-                                                            <div className="flex items-center gap-2">
-                                                                <span>{customer.nama}</span>
-                                                                {customer.is_member && (
-                                                                    <Crown className="h-3 w-3 text-yellow-500" />
-                                                                )}
-                                                                <span className="text-xs text-gray-500">({customer.no_hp})</span>
-                                                            </div>
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                            <Button 
-                                                type="button" 
-                                                variant="outline"
-                                                onClick={() => setShowQuickAddCustomer(true)}
-                                            >
-                                                <Plus className="h-4 w-4 mr-2" />
-                                                Tambah
-                                            </Button>
-                                        </div>
-                                        {selectedCustomer && (
-                                            <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border">
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <p className="text-sm font-medium">{selectedCustomer.nama}</p>
-                                                        <p className="text-xs text-gray-500">{selectedCustomer.no_hp}</p>
-                                                    </div>
-                                                    {selectedCustomer.is_member && (
-                                                        <div className="flex items-center gap-2">
-                                                            <Gift className="h-4 w-4 text-amber-600" />
-                                                            <Badge variant="outline" className="border-amber-500 text-amber-600">
-                                                                {selectedCustomer.poin} poin
-                                                            </Badge>
-                                                        </div>
-                                                    )}
+                    {/* Only show form if outlet is selected */}
+                    {(isKasir || currentOutletId) && (
+                        <>
+                            {/* Main Content Grid */}
+                            <div className="grid lg:grid-cols-3 gap-6">
+                                {/* LEFT COLUMN - Form Inputs */}
+                                <div className="lg:col-span-2 space-y-6">
+                                    {/* Customer & Date Section */}
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <User className="h-5 w-5" />
+                                                Informasi Customer & Jadwal
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4">
+                                            <div>
+                                                <Label>Customer *</Label>
+                                                <div className="flex gap-2">
+                                                    <Select 
+                                                        value={selectedCustomer?.id?.toString() || 'none'} 
+                                                        onValueChange={(value) => {
+                                                            if (value === 'none') {
+                                                                setSelectedCustomer(null);
+                                                            } else {
+                                                                const customer = customers.find(c => c.id === parseInt(value));
+                                                                setSelectedCustomer(customer);
+                                                                setRedeemPoints(0);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <SelectTrigger className="flex-1">
+                                                            <SelectValue placeholder="Pilih Customer" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="none">-- Pilih Customer --</SelectItem>
+                                                            {customers.map((customer) => (
+                                                                <SelectItem key={customer.id} value={customer.id.toString()}>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span>{customer.nama}</span>
+                                                                        {customer.is_member && (
+                                                                            <Crown className="h-3 w-3 text-yellow-500" />
+                                                                        )}
+                                                                        <span className="text-xs text-gray-500">({customer.no_hp})</span>
+                                                                    </div>
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <Button 
+                                                        type="button" 
+                                                        variant="outline"
+                                                        onClick={() => setShowQuickAddCustomer(true)}
+                                                    >
+                                                        <Plus className="h-4 w-4 mr-2" />
+                                                        Tambah
+                                                    </Button>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="grid md:grid-cols-2 gap-4">
-                                        <div>
-                                            <Label htmlFor="tgl">Tanggal *</Label>
-                                            <Input
-                                                id="tgl"
-                                                type="date"
-                                                value={data.tgl}
-                                                onChange={(e) => setData('tgl', e.target.value)}
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label htmlFor="batas_waktu">Batas Waktu Selesai *</Label>
-                                            <Input
-                                                id="batas_waktu"
-                                                type="datetime-local"
-                                                value={data.batas_waktu}
-                                                onChange={(e) => setData('batas_waktu', e.target.value)}
-                                            />
-                                            {errors.batas_waktu && (
-                                                <p className="mt-1 text-sm text-red-500">{errors.batas_waktu}</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            {/* Items Section */}
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <Package className="h-5 w-5" />
-                                            Paket Layanan
-                                        </div>
-                                        <Button type="button" onClick={addItem} size="sm">
-                                            <Plus className="h-4 w-4 mr-2" />
-                                            Tambah
-                                        </Button>
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    {items.length === 0 ? (
-                                        <div className="text-center py-8 text-muted-foreground">
-                                            <Package className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                                            <p>Belum ada paket. Klik "Tambah" untuk menambah item.</p>
-                                        </div>
-                                    ) : (
-                                        items.map((item, index) => {
-                                            const selectedPaket = currentPakets.find(p => p.id === parseInt(item.id_paket));
-                                            const subtotal = selectedPaket ? parseFloat(item.qty) * parseFloat(selectedPaket.harga) : 0;
-
-                                            return (
-                                                <div key={item.id} className="p-4 border rounded-lg space-y-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <Badge variant="outline">Item #{index + 1}</Badge>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => removeItem(item.id)}
-                                                        >
-                                                            <X className="h-4 w-4" />
-                                                        </Button>
-                                                    </div>
-
-                                                    <div className="grid md:grid-cols-4 gap-3">
-                                                        <div className="md:col-span-2">
-                                                            <Label>Paket *</Label>
-                                                            <Select
-                                                                value={item.id_paket?.toString() || 'none'}
-                                                                onValueChange={(value) => updateItem(item.id, 'id_paket', value === 'none' ? '' : value)}
-                                                            >
-                                                                <SelectTrigger>
-                                                                    <SelectValue placeholder="Pilih Paket" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="none">-- Pilih Paket --</SelectItem>
-                                                                    {currentPakets.map((paket) => (
-                                                                        <SelectItem key={paket.id} value={paket.id.toString()}>
-                                                                            {paket.nama_paket} - {formatRupiah(paket.harga)}
-                                                                        </SelectItem>
-                                                                    ))}
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
-                                                        <div>
-                                                            <Label>Qty (kg) *</Label>
-                                                            <Input
-                                                                type="number"
-                                                                step="0.01"
-                                                                min="0.01"
-                                                                value={item.qty}
-                                                                onChange={(e) => updateItem(item.id, 'qty', e.target.value)}
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <Label>Subtotal</Label>
-                                                            <div className="h-9 flex items-center px-3 bg-gray-50 dark:bg-gray-900 border rounded-md">
-                                                                <span className="font-semibold text-green-600">
-                                                                    {formatRupiah(subtotal)}
-                                                                </span>
+                                                {selectedCustomer && (
+                                                    <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border">
+                                                        <div className="flex items-center justify-between">
+                                                            <div>
+                                                                <p className="text-sm font-medium">{selectedCustomer.nama}</p>
+                                                                <p className="text-xs text-gray-500">{selectedCustomer.no_hp}</p>
                                                             </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div>
-                                                        <Label>Keterangan</Label>
-                                                        <Input
-                                                            placeholder="Contoh: Noda kopi, pewangi extra"
-                                                            value={item.keterangan}
-                                                            onChange={(e) => updateItem(item.id, 'keterangan', e.target.value)}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            );
-                                        })
-                                    )}
-                                </CardContent>
-                            </Card>
-
-                            {/* Surcharges */}
-                            {surcharges.length > 0 && (
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle className="flex items-center gap-2">
-                                            <CreditCard className="h-5 w-5" />
-                                            Biaya Tambahan
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3">
-                                        {surcharges.map((surcharge) => {
-                                            const isSelected = selectedSurcharges.includes(surcharge.id);
-                                            const isFree = surcharge.min_order_total && 
-                                                calculation.subtotal_items >= surcharge.min_order_total;
-
-                                            return (
-                                                <div key={surcharge.id} className="flex items-start gap-3 p-3 border rounded-lg">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={isSelected}
-                                                        onChange={() => toggleSurcharge(surcharge.id)}
-                                                        className="mt-1"
-                                                        disabled={isFree}
-                                                    />
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <p className="font-medium">{surcharge.nama}</p>
-                                                            {isFree && (
-                                                                <Badge className="bg-green-600">GRATIS</Badge>
+                                                            {selectedCustomer.is_member && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <Gift className="h-4 w-4 text-amber-600" />
+                                                                    <Badge variant="outline" className="border-amber-500 text-amber-600">
+                                                                        {selectedCustomer.poin} poin
+                                                                    </Badge>
+                                                                </div>
                                                             )}
                                                         </div>
-                                                        <p className="text-xs text-gray-500">
-                                                            {surcharge.calculation_type === 'percent' && `${surcharge.nominal}%`}
-                                                            {surcharge.calculation_type === 'fixed' && formatRupiah(surcharge.nominal)}
-                                                            {surcharge.calculation_type === 'distance' && `${formatRupiah(surcharge.nominal)}/km`}
-                                                        </p>
                                                     </div>
-                                                    {isSelected && surcharge.calculation_type === 'distance' && (
+                                                )}
+                                            </div>
+
+                                            <div className="grid md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <Label htmlFor="tgl">Tanggal *</Label>
+                                                    <Input
+                                                        id="tgl"
+                                                        type="date"
+                                                        value={data.tgl}
+                                                        onChange={(e) => setData('tgl', e.target.value)}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="batas_waktu">Batas Waktu Selesai *</Label>
+                                                    <Input
+                                                        id="batas_waktu"
+                                                        type="datetime-local"
+                                                        value={data.batas_waktu}
+                                                        onChange={(e) => setData('batas_waktu', e.target.value)}
+                                                    />
+                                                    {errors.batas_waktu && (
+                                                        <p className="mt-1 text-sm text-red-500">{errors.batas_waktu}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* Items Section */}
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <Package className="h-5 w-5" />
+                                                    Paket Layanan
+                                                </div>
+                                                <Button type="button" onClick={addItem} size="sm" disabled={currentPakets.length === 0}>
+                                                    <Plus className="h-4 w-4 mr-2" />
+                                                    Tambah
+                                                </Button>
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4">
+                                            {currentPakets.length === 0 ? (
+                                                <div className="text-center py-8 text-muted-foreground">
+                                                    <Package className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                                                    <p>Tidak ada paket tersedia untuk outlet ini.</p>
+                                                </div>
+                                            ) : items.length === 0 ? (
+                                                <div className="text-center py-8 text-muted-foreground">
+                                                    <Package className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                                                    <p>Belum ada paket. Klik "Tambah" untuk menambah item.</p>
+                                                </div>
+                                            ) : (
+                                                items.map((item, index) => {
+                                                    const selectedPaket = currentPakets.find(p => p.id === parseInt(item.id_paket));
+                                                    const subtotal = selectedPaket ? parseFloat(item.qty) * parseFloat(selectedPaket.harga) : 0;
+
+                                                    return (
+                                                        <div key={item.id} className="p-4 border rounded-lg space-y-3">
+                                                            <div className="flex items-center justify-between">
+                                                                <Badge variant="outline">Item #{index + 1}</Badge>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    onClick={() => removeItem(item.id)}
+                                                                >
+                                                                    <X className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+
+                                                            <div className="grid md:grid-cols-4 gap-3">
+                                                                <div className="md:col-span-2">
+                                                                    <Label>Paket *</Label>
+                                                                    <Select
+                                                                        value={item.id_paket?.toString() || 'none'}
+                                                                        onValueChange={(value) => updateItem(item.id, 'id_paket', value === 'none' ? '' : value)}
+                                                                    >
+                                                                        <SelectTrigger>
+                                                                            <SelectValue placeholder="Pilih Paket" />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="none">-- Pilih Paket --</SelectItem>
+                                                                            {currentPakets.map((paket) => (
+                                                                                <SelectItem key={paket.id} value={paket.id.toString()}>
+                                                                                    {paket.nama_paket} - {formatRupiah(paket.harga)}
+                                                                                </SelectItem>
+                                                                            ))}
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </div>
+                                                                <div>
+                                                                    <Label>Qty (kg) *</Label>
+                                                                    <Input
+                                                                        type="number"
+                                                                        step="0.01"
+                                                                        min="0.01"
+                                                                        value={item.qty}
+                                                                        onChange={(e) => updateItem(item.id, 'qty', e.target.value)}
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <Label>Subtotal</Label>
+                                                                    <div className="h-9 flex items-center px-3 bg-gray-50 dark:bg-gray-900 border rounded-md">
+                                                                        <span className="font-semibold text-green-600">
+                                                                            {formatRupiah(subtotal)}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div>
+                                                                <Label>Keterangan</Label>
+                                                                <Input
+                                                                    placeholder="Contoh: Noda kopi, pewangi extra"
+                                                                    value={item.keterangan}
+                                                                    onChange={(e) => updateItem(item.id, 'keterangan', e.target.value)}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* Surcharges */}
+                                    {surcharges.length > 0 && (
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <CreditCard className="h-5 w-5" />
+                                                    Biaya Tambahan
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="space-y-3">
+                                                {surcharges.map((surcharge) => {
+                                                    const isSelected = selectedSurcharges.includes(surcharge.id);
+                                                    const isFree = surcharge.min_order_total && 
+                                                        calculation.subtotal_items >= surcharge.min_order_total;
+
+                                                    return (
+                                                        <div key={surcharge.id} className="flex items-start gap-3 p-3 border rounded-lg">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isSelected}
+                                                                onChange={() => toggleSurcharge(surcharge.id)}
+                                                                className="mt-1"
+                                                                disabled={isFree}
+                                                            />
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <p className="font-medium">{surcharge.nama}</p>
+                                                                    {isFree && (
+                                                                        <Badge className="bg-green-600">GRATIS</Badge>
+                                                                    )}
+                                                                </div>
+                                                                <p className="text-xs text-gray-500">
+                                                                    {surcharge.calculation_type === 'percent' && `${surcharge.nominal}%`}
+                                                                    {surcharge.calculation_type === 'fixed' && formatRupiah(surcharge.nominal)}
+                                                                    {surcharge.calculation_type === 'distance' && `${formatRupiah(surcharge.nominal)}/km`}
+                                                                </p>
+                                                            </div>
+                                                            {isSelected && surcharge.calculation_type === 'distance' && (
+                                                                <Input
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    min="0"
+                                                                    placeholder="Jarak (km)"
+                                                                    value={surchargeDistances[surcharge.id] || ''}
+                                                                    onChange={(e) => setSurchargeDistances({
+                                                                        ...surchargeDistances,
+                                                                        [surcharge.id]: parseFloat(e.target.value) || 0
+                                                                    })}
+                                                                    className="w-32"
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
+                                    {/* Promo & Points */}
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <Tag className="h-5 w-5" />
+                                                Diskon & Promo
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4">
+                                            <div>
+                                                <Label>Pilih Promo</Label>
+                                                <Select
+                                                    value={selectedPromo?.toString() || 'none'}
+                                                    onValueChange={(value) => setSelectedPromo(value === 'none' ? null : parseInt(value))}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Tidak ada promo" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="none">Tidak ada promo</SelectItem>
+                                                        {promos.map((promo) => (
+                                                            <SelectItem 
+                                                                key={promo.id} 
+                                                                value={promo.id.toString()}
+                                                                disabled={!isPromoEligible(promo)}
+                                                            >
+                                                                {promo.nama_promo} ({promo.jenis === 'percent' ? `${promo.diskon}%` : formatRupiah(promo.diskon)})
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            {selectedCustomer && selectedCustomer.is_member && selectedCustomer.poin > 0 && (
+                                                <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900 rounded-lg space-y-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <Gift className="h-5 w-5 text-amber-600" />
+                                                        <p className="font-semibold">Tukar Poin</p>
+                                                    </div>
+                                                    <div>
+                                                        <Label>Jumlah Poin</Label>
                                                         <Input
                                                             type="number"
-                                                            step="0.1"
                                                             min="0"
-                                                            placeholder="Jarak (km)"
-                                                            value={surchargeDistances[surcharge.id] || ''}
-                                                            onChange={(e) => setSurchargeDistances({
-                                                                ...surchargeDistances,
-                                                                [surcharge.id]: parseFloat(e.target.value) || 0
-                                                            })}
-                                                            className="w-32"
+                                                            max={selectedCustomer.poin}
+                                                            value={redeemPoints}
+                                                            onChange={(e) => setRedeemPoints(parseInt(e.target.value) || 0)}
                                                         />
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </CardContent>
-                                </Card>
-                            )}
-
-                            {/* Promo & Points */}
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="flex items-center gap-2">
-                                        <Tag className="h-5 w-5" />
-                                        Diskon & Promo
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div>
-                                        <Label>Pilih Promo</Label>
-                                        <Select
-                                            value={selectedPromo?.toString() || 'none'}
-                                            onValueChange={(value) => setSelectedPromo(value === 'none' ? null : parseInt(value))}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Tidak ada promo" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="none">Tidak ada promo</SelectItem>
-                                                {promos.map((promo) => (
-                                                    <SelectItem 
-                                                        key={promo.id} 
-                                                        value={promo.id.toString()}
-                                                        disabled={!isPromoEligible(promo)}
-                                                    >
-                                                        {promo.nama_promo} ({promo.jenis === 'percent' ? `${promo.diskon}%` : formatRupiah(promo.diskon)})
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    {selectedCustomer && selectedCustomer.is_member && selectedCustomer.poin > 0 && (
-                                        <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900 rounded-lg space-y-3">
-                                            <div className="flex items-center gap-2">
-                                                <Gift className="h-5 w-5 text-amber-600" />
-                                                <p className="font-semibold">Tukar Poin</p>
-                                            </div>
-                                            <div>
-                                                <Label>Jumlah Poin</Label>
-                                                <Input
-                                                    type="number"
-                                                    min="0"
-                                                    max={selectedCustomer.poin}
-                                                    value={redeemPoints}
-                                                    onChange={(e) => setRedeemPoints(parseInt(e.target.value) || 0)}
-                                                />
-                                                <p className="mt-1 text-xs text-gray-500">
-                                                    Nilai: {formatRupiah(redeemPoints * settings.points_redeem_value)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-
-                            {/* Status */}
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="flex items-center gap-2">
-                                        <Receipt className="h-5 w-5" />
-                                        Status
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <Select value={data.status} onValueChange={(value) => setData('status', value)}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="baru">Baru</SelectItem>
-                                            <SelectItem value="proses">Proses</SelectItem>
-                                            <SelectItem value="selesai">Selesai</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        {/* RIGHT COLUMN - Summary */}
-                        <div className="lg:col-span-1">
-                            <div className="sticky top-6">
-                                <Card className="border-2 border-green-200 dark:border-green-900">
-                                    <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/10 dark:to-emerald-900/10">
-                                        <CardTitle className="flex items-center gap-2">
-                                            <Calculator className="h-5 w-5" />
-                                            Ringkasan
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3 pt-6">
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between text-sm">
-                                                <span>Subtotal:</span>
-                                                <span className="font-medium">{formatRupiah(calculation.subtotal_items)}</span>
-                                            </div>
-                                            {calculation.total_surcharge > 0 && (
-                                                <div className="flex justify-between text-sm">
-                                                    <span>Biaya Tambahan:</span>
-                                                    <span className="font-medium text-orange-600">+ {formatRupiah(calculation.total_surcharge)}</span>
-                                                </div>
-                                            )}
-                                            {calculation.total_diskon > 0 && (
-                                                <>
-                                                    <Separator />
-                                                    {calculation.diskon_promo > 0 && (
-                                                        <div className="flex justify-between text-sm">
-                                                            <span>Diskon Promo:</span>
-                                                            <span className="font-medium text-green-600">- {formatRupiah(calculation.diskon_promo)}</span>
-                                                        </div>
-                                                    )}
-                                                    {calculation.diskon_poin > 0 && (
-                                                        <div className="flex justify-between text-sm">
-                                                            <span>Diskon Poin:</span>
-                                                            <span className="font-medium text-green-600">- {formatRupiah(calculation.diskon_poin)}</span>
-                                                        </div>
-                                                    )}
-                                                </>
-                                            )}
-                                            {settings.auto_apply_tax && (
-                                                <>
-                                                    <Separator />
-                                                    <div className="flex justify-between text-sm">
-                                                        <span>Pajak ({settings.tax_rate}%):</span>
-                                                        <span className="font-medium text-blue-600">+ {formatRupiah(calculation.pajak_amount)}</span>
+                                                        <p className="mt-1 text-xs text-gray-500">
+                                                            Nilai: {formatRupiah(redeemPoints * settings.points_redeem_value)}
+                                                        </p>
                                                     </div>
-                                                </>
+                                                </div>
                                             )}
-                                        </div>
+                                        </CardContent>
+                                    </Card>
 
-                                        <Separator />
+                                    {/* Status */}
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <Receipt className="h-5 w-5" />
+                                                Status
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <Select value={data.status} onValueChange={(value) => setData('status', value)}>
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="baru">Baru</SelectItem>
+                                                    <SelectItem value="proses">Proses</SelectItem>
+                                                    <SelectItem value="selesai">Selesai</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </CardContent>
+                                    </Card>
+                                </div>
 
-                                        <div className="flex justify-between items-center p-4 bg-green-100 dark:bg-green-900/20 rounded-lg">
-                                            <span className="font-bold">TOTAL:</span>
-                                            <span className="text-2xl font-bold text-green-600">
-                                                {formatRupiah(calculation.total_akhir)}
-                                            </span>
-                                        </div>
+                                {/* RIGHT COLUMN - Summary */}
+                                <div className="lg:col-span-1">
+                                    <div className="sticky top-6">
+                                        <Card className="border-2 border-green-200 dark:border-green-900">
+                                            <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/10 dark:to-emerald-900/10">
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <Calculator className="h-5 w-5" />
+                                                    Ringkasan
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="space-y-3 pt-6">
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between text-sm">
+                                                        <span>Subtotal:</span>
+                                                        <span className="font-medium">{formatRupiah(calculation.subtotal_items)}</span>
+                                                    </div>
+                                                    {calculation.total_surcharge > 0 && (
+                                                        <div className="flex justify-between text-sm">
+                                                            <span>Biaya Tambahan:</span>
+                                                            <span className="font-medium text-orange-600">+ {formatRupiah(calculation.total_surcharge)}</span>
+                                                        </div>
+                                                    )}
+                                                    {calculation.total_diskon > 0 && (
+                                                        <>
+                                                            <Separator />
+                                                            {calculation.diskon_promo > 0 && (
+                                                                <div className="flex justify-between text-sm">
+                                                                    <span>Diskon Promo:</span>
+                                                                    <span className="font-medium text-green-600">- {formatRupiah(calculation.diskon_promo)}</span>
+                                                                </div>
+                                                            )}
+                                                            {calculation.diskon_poin > 0 && (
+                                                                <div className="flex justify-between text-sm">
+                                                                    <span>Diskon Poin:</span>
+                                                                    <span className="font-medium text-green-600">- {formatRupiah(calculation.diskon_poin)}</span>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                    {settings.auto_apply_tax && (
+                                                        <>
+                                                            <Separator />
+                                                            <div className="flex justify-between text-sm">
+                                                                <span>Pajak ({settings.tax_rate}%):</span>
+                                                                <span className="font-medium text-blue-600">+ {formatRupiah(calculation.pajak_amount)}</span>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
 
-                                        {calculation.earned_points > 0 && (
-                                            <div className="flex items-center justify-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-lg border border-amber-200">
-                                                <TrendingUp className="h-4 w-4 text-amber-600" />
-                                                <p className="text-sm font-medium">
-                                                    +{calculation.earned_points} poin
-                                                </p>
-                                            </div>
-                                        )}
+                                                <Separator />
 
-                                        <Separator />
+                                                <div className="flex justify-between items-center p-4 bg-green-100 dark:bg-green-900/20 rounded-lg">
+                                                    <span className="font-bold">TOTAL:</span>
+                                                    <span className="text-2xl font-bold text-green-600">
+                                                        {formatRupiah(calculation.total_akhir)}
+                                                    </span>
+                                                </div>
 
-                                        <div className="space-y-2">
-                                            <Button
-                                                type="button"
-                                                onClick={handlePayNow}
-                                                disabled={processing}
-                                                className="w-full bg-green-600 hover:bg-green-700"
-                                            >
-                                                <DollarSign className="mr-2 h-4 w-4" />
-                                                Bayar Lunas
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                onClick={handleSaveLater}
-                                                disabled={processing}
-                                                variant="outline"
-                                                className="w-full"
-                                            >
-                                                <Receipt className="mr-2 h-4 w-4" />
-                                                Simpan & Bayar Nanti
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                onClick={() => router.visit(route('transaksi.index'))}
-                                                variant="ghost"
-                                                className="w-full"
-                                            >
-                                                <X className="mr-2 h-4 w-4" />
-                                                Batal
-                                            </Button>
-                                        </div>
-                                    </CardContent>
-                                </Card>
+                                                {calculation.earned_points > 0 && (
+                                                    <div className="flex items-center justify-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-lg border border-amber-200">
+                                                        <TrendingUp className="h-4 w-4 text-amber-600" />
+                                                        <p className="text-sm font-medium">
+                                                            +{calculation.earned_points} poin
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                <Separator />
+
+                                                <div className="space-y-2">
+                                                    <Button
+                                                        type="button"
+                                                        onClick={handlePayNow}
+                                                        disabled={processing}
+                                                        className="w-full bg-green-600 hover:bg-green-700"
+                                                    >
+                                                        <DollarSign className="mr-2 h-4 w-4" />
+                                                        Bayar Lunas
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        onClick={handleSaveLater}
+                                                        disabled={processing}
+                                                        variant="outline"
+                                                        className="w-full"
+                                                    >
+                                                        <Receipt className="mr-2 h-4 w-4" />
+                                                        Simpan & Bayar Nanti
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        onClick={() => router.visit(route('transaksi.index'))}
+                                                        variant="ghost"
+                                                        className="w-full"
+                                                    >
+                                                        <X className="mr-2 h-4 w-4" />
+                                                        Batal
+                                                    </Button>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -920,7 +991,7 @@ export default function TransaksiCreate({
                             <div>
                                 <Label>Nama *</Label>
                                 <Input
-                                    value={quickAddForm.data.nama}
+                                                                    value={quickAddForm.data.nama}
                                     onChange={(e) => quickAddForm.setData('nama', e.target.value)}
                                 />
                             </div>

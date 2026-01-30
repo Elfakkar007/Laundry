@@ -12,6 +12,7 @@ use App\Models\Setting;
 use App\Traits\HasAuthorization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
@@ -90,18 +91,27 @@ class TransaksiController extends Controller
 
     /**
      * Show the form for creating a new transaction
-     * Returns data based on selected outlet (for admin) or user's outlet (for kasir)
+     * FIXED: Better outlet selection handling for admin
      */
     public function create(Request $request): Response
     {
         $this->authorizePermission('transaksi.create');
 
         $user = $request->user();
-        $selectedOutletId = $request->input('outlet_id', $user->id_outlet);
-
-        // For kasir, force their outlet
+        
+        // Determine selected outlet
         if ($user->id_outlet !== null) {
+            // Kasir: force their outlet
             $selectedOutletId = $user->id_outlet;
+        } else {
+            // Admin: use query param or default to first outlet
+            $selectedOutletId = $request->input('outlet_id');
+            
+            if (!$selectedOutletId) {
+                // Default to first outlet if none selected
+                $firstOutlet = Outlet::orderBy('nama')->first();
+                $selectedOutletId = $firstOutlet ? $firstOutlet->id : null;
+            }
         }
 
         // Get outlets for admin (for outlet switcher)
@@ -142,8 +152,8 @@ class TransaksiController extends Controller
             'points_redeem_value' => (float) Setting::getValue('points_redeem_value', 500),
         ];
 
-        // Generate invoice code
-        $invoiceCode = $this->generateInvoiceCode($selectedOutletId);
+        // Generate invoice code only if outlet is selected
+        $invoiceCode = $selectedOutletId ? $this->generateInvoiceCode($selectedOutletId) : null;
 
         return Inertia::render('Transaksi/Create', [
             'outlets' => $outlets,
@@ -187,10 +197,14 @@ class TransaksiController extends Controller
 
     /**
      * Store a newly created transaction
+     * FIXED: Better validation and error handling
      */
     public function store(Request $request): RedirectResponse
     {
         $this->authorizePermission('transaksi.create');
+
+        // Log untuk debugging
+        Log::info('Transaksi Store Request', ['data' => $request->all()]);
 
         $validated = $request->validate([
             'id_outlet' => 'required|exists:outlets,id',
@@ -209,11 +223,25 @@ class TransaksiController extends Controller
             'status' => 'required|in:baru,proses,selesai,diambil',
             'payment_action' => 'required|in:bayar_nanti,bayar_lunas',
             'jumlah_bayar' => 'required_if:payment_action,bayar_lunas|nullable|numeric|min:0',
+        ], [
+            'id_outlet.required' => 'Outlet wajib dipilih',
+            'id_customer.required' => 'Customer wajib dipilih',
+            'tgl.required' => 'Tanggal wajib diisi',
+            'batas_waktu.required' => 'Batas waktu wajib diisi',
+            'batas_waktu.after' => 'Batas waktu harus setelah tanggal transaksi',
+            'items.required' => 'Minimal 1 item paket wajib ditambahkan',
+            'items.min' => 'Minimal 1 item paket wajib ditambahkan',
+            'items.*.id_paket.required' => 'Paket wajib dipilih',
+            'items.*.qty.required' => 'Qty wajib diisi',
+            'items.*.qty.min' => 'Qty minimal 0.01',
+            'status.required' => 'Status wajib dipilih',
+            'payment_action.required' => 'Pilih metode pembayaran',
+            'jumlah_bayar.required_if' => 'Jumlah bayar wajib diisi untuk pembayaran lunas',
         ]);
 
         // Validation: Kasir cannot create for other outlets
         if ($request->user()->id_outlet !== null && $validated['id_outlet'] != $request->user()->id_outlet) {
-            return redirect()->back()->with('error', 'Tidak dapat membuat transaksi untuk outlet lain!');
+            return redirect()->back()->withErrors(['id_outlet' => 'Tidak dapat membuat transaksi untuk outlet lain!'])->withInput();
         }
 
         try {
@@ -231,17 +259,19 @@ class TransaksiController extends Controller
                 $customer
             );
 
+            Log::info('Transaction Calculation', $calculation);
+
             // Validate redeem points
             if (($validated['redeem_points'] ?? 0) > 0 && $customer->poin < $validated['redeem_points']) {
                 DB::rollBack();
-                return redirect()->back()->with('error', 'Poin pelanggan tidak mencukupi!');
+                return redirect()->back()->withErrors(['redeem_points' => 'Poin pelanggan tidak mencukupi!'])->withInput();
             }
 
             // Validate payment amount if bayar_lunas
             if ($validated['payment_action'] === 'bayar_lunas') {
                 if ($validated['jumlah_bayar'] < $calculation['total_akhir']) {
                     DB::rollBack();
-                    return redirect()->back()->with('error', 'Jumlah bayar kurang dari total tagihan!');
+                    return redirect()->back()->withErrors(['jumlah_bayar' => 'Jumlah bayar kurang dari total tagihan!'])->withInput();
                 }
             }
 
@@ -261,13 +291,16 @@ class TransaksiController extends Controller
                 'id_user' => $request->user()->id,
             ]);
 
+            Log::info('Transaksi Created', ['id' => $transaksi->id, 'invoice' => $transaksi->kode_invoice]);
+
             // Create detail items
             foreach ($validated['items'] as $item) {
-                $transaksi->detailTransaksis()->create([
+                $detail = $transaksi->detailTransaksis()->create([
                     'id_paket' => $item['id_paket'],
                     'qty' => $item['qty'],
                     'keterangan' => $item['keterangan'] ?? null,
                 ]);
+                Log::info('Detail Created', ['detail_id' => $detail->id]);
             }
 
             // Handle points redemption
@@ -278,6 +311,7 @@ class TransaksiController extends Controller
                     'reference_id' => $transaksi->id,
                     'created_by' => $request->user()->id,
                 ]);
+                Log::info('Points Redeemed', ['points' => $validated['redeem_points']]);
             }
 
             // Handle points earning (only if paid)
@@ -291,10 +325,13 @@ class TransaksiController extends Controller
                         'notes' => "Belanja transaksi {$transaksi->kode_invoice}",
                         'created_by' => $request->user()->id,
                     ]);
+                    Log::info('Points Earned', ['points' => $earnedPoints]);
                 }
             }
 
             DB::commit();
+
+            Log::info('Transaction Saved Successfully', ['transaksi_id' => $transaksi->id]);
 
             return redirect()->route('transaksi.index')->with('success', 
                 $validated['payment_action'] === 'bayar_lunas' 
@@ -304,7 +341,11 @@ class TransaksiController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->back()->with('error', 'Gagal membuat transaksi: ' . $e->getMessage());
+            Log::error('Transaction Store Error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return redirect()->back()->withErrors(['error' => 'Gagal membuat transaksi: ' . $e->getMessage()])->withInput();
         }
     }
 
@@ -502,7 +543,8 @@ class TransaksiController extends Controller
         $subtotalItems = 0;
         foreach ($items as $item) {
             $paket = Paket::find($item['id_paket']);
-            $subtotalItems += $item['qty'] * $paket->harga;
+            if (!$paket) continue;
+            $subtotalItems += floatval($item['qty']) * floatval($paket->harga);
         }
 
         // Step 2: Calculate surcharges
