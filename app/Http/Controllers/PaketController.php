@@ -54,7 +54,9 @@ class PaketController extends Controller
             'id_outlet' => 'required|exists:outlets,id',
             'id_package_type' => 'required|exists:package_types,id',
             'nama_paket' => 'required|string|max:255',
-            'harga' => 'required|numeric|min:0',
+            'harga' => 'required|numeric|min:1',
+        ], [
+            'harga.min' => 'Harga minimal Rp 1',
         ]);
 
         try {
@@ -75,7 +77,9 @@ class PaketController extends Controller
             'id_outlet' => 'required|exists:outlets,id',
             'id_package_type' => 'required|exists:package_types,id',
             'nama_paket' => 'required|string|max:255',
-            'harga' => 'required|numeric|min:0',
+            'harga' => 'required|numeric|min:1',
+        ], [
+            'harga.min' => 'Harga minimal Rp 1',
         ]);
 
         try {
@@ -88,6 +92,21 @@ class PaketController extends Controller
     }
 
     /**
+     * Toggle active status of the specified paket.
+     */
+    public function toggleActive(Paket $paket): RedirectResponse
+    {
+        try {
+            $paket->update(['is_active' => !$paket->is_active]);
+
+            $status = $paket->is_active ? 'diaktifkan' : 'dinonaktifkan';
+            return redirect()->back()->with('success', "Paket berhasil {$status}!");
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal mengubah status paket: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Remove the specified paket.
      */
     public function destroy(Paket $paket): RedirectResponse
@@ -95,7 +114,7 @@ class PaketController extends Controller
         try {
             // Check if paket has related detail transaksis
             if ($paket->detailTransaksis()->count() > 0) {
-                return redirect()->back()->with('error', 'Paket tidak dapat dihapus karena sudah digunakan dalam transaksi.');
+                return redirect()->back()->with('error', 'Paket tidak dapat dihapus karena sudah digunakan dalam transaksi. Silakan nonaktifkan paket ini sebagai gantinya.');
             }
 
             $paket->delete();

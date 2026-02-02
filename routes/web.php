@@ -112,6 +112,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->middleware('permission:paket.update')
             ->name('update');
         
+        Route::post('/{paket}/toggle-active', [PaketController::class, 'toggleActive'])
+            ->middleware('permission:paket.update')
+            ->name('toggle-active');
+        
         Route::delete('/{paket}', [PaketController::class, 'destroy'])
             ->middleware('permission:paket.delete')
             ->name('destroy');

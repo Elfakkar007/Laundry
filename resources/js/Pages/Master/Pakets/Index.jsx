@@ -26,8 +26,9 @@ import {
     DialogTitle,
     DialogFooter,
 } from '@/Components/ui/dialog';
+import { Badge } from '@/Components/ui/badge';
 import { toast } from 'sonner';
-import { Pencil, Trash2, Plus, Search } from 'lucide-react';
+import { Pencil, Trash2, Plus, Search, Power, PowerOff } from 'lucide-react';
 
 export default function PaketsIndex({ pakets, outlets, packageTypes, filters, flash }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -84,6 +85,13 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
             post(route('pakets.store'), {
                 onSuccess: () => closeDialog(),
             });
+        }
+    };
+
+    const handleToggleActive = (paket) => {
+        const status = paket.is_active ? 'nonaktifkan' : 'aktifkan';
+        if (confirm(`Yakin ingin ${status} paket "${paket.nama_paket}"?`)) {
+            router.post(route('pakets.toggle-active', paket.id));
         }
     };
 
@@ -152,13 +160,14 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
                                             <TableHead>Jenis</TableHead>
                                             <TableHead>Outlet</TableHead>
                                             <TableHead className="text-right">Harga</TableHead>
-                                            <TableHead className="text-right w-[120px]">Aksi</TableHead>
+                                            <TableHead className="text-center">Status</TableHead>
+                                            <TableHead className="text-right w-[150px]">Aksi</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {pakets.data.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                                                <TableCell colSpan={7} className="text-center text-muted-foreground">
                                                     Tidak ada data paket
                                                 </TableCell>
                                             </TableRow>
@@ -172,8 +181,31 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
                                                     <TableCell className="text-right font-medium">
                                                         {formatRupiah(paket.harga)}
                                                     </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Badge 
+                                                            variant={paket.is_active ? "success" : "secondary"}
+                                                            className={paket.is_active 
+                                                                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" 
+                                                                : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
+                                                            }
+                                                        >
+                                                            {paket.is_active ? 'Aktif' : 'Nonaktif'}
+                                                        </Badge>
+                                                    </TableCell>
                                                     <TableCell className="text-right">
                                                         <div className="flex justify-end gap-2">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="icon"
+                                                                onClick={() => handleToggleActive(paket)}
+                                                                title={paket.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+                                                            >
+                                                                {paket.is_active ? (
+                                                                    <PowerOff className="h-4 w-4 text-orange-600" />
+                                                                ) : (
+                                                                    <Power className="h-4 w-4 text-green-600" />
+                                                                )}
+                                                            </Button>
                                                             <Button
                                                                 variant="outline"
                                                                 size="icon"
@@ -285,10 +317,12 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
                             </div>
 
                             <div>
-                                <Label htmlFor="harga">Harga *</Label>
+                                <Label htmlFor="harga">Harga (Minimal Rp 1) *</Label>
                                 <Input
                                     id="harga"
                                     type="number"
+                                    min="1"
+                                    step="0.01"
                                     value={data.harga}
                                     onChange={(e) => setData('harga', e.target.value)}
                                     placeholder="0"

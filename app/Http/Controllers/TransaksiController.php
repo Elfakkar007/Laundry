@@ -124,9 +124,10 @@ class TransaksiController extends Controller
             ->orderBy('nama')
             ->get();
 
-        // Get pakets for selected outlet
+        // ✅ PERBAIKAN: Get pakets for selected outlet - HANYA YANG AKTIF
         $pakets = $selectedOutletId
             ? Paket::where('id_outlet', $selectedOutletId)
+                ->where('is_active', true) // ✅ FILTER HANYA PAKET AKTIF
                 ->with('packageType')
                 ->orderBy('nama_paket')
                 ->get()
@@ -182,7 +183,9 @@ class TransaksiController extends Controller
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
+        // ✅ PERBAIKAN: Get pakets - HANYA YANG AKTIF
         $pakets = Paket::where('id_outlet', $outletId)
+            ->where('is_active', true) // ✅ FILTER HANYA PAKET AKTIF
             ->with('packageType')
             ->orderBy('nama_paket')
             ->get();

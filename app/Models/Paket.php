@@ -16,12 +16,14 @@ class Paket extends Model
         'id_package_type',
         'nama_paket',
         'harga',
+        'is_active',
     ];
 
     protected function casts(): array
     {
         return [
             'harga' => 'decimal:2',
+            'is_active' => 'boolean',
         ];
     }
 
@@ -47,5 +49,13 @@ class Paket extends Model
     public function detailTransaksis(): HasMany
     {
         return $this->hasMany(DetailTransaksi::class, 'id_paket');
+    }
+
+    /**
+     * Scope untuk hanya paket yang aktif
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
     }
 }
