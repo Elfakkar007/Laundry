@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { 
     ArrowLeft, Plus, Trash2, Store, User, Calendar, 
     Package, CreditCard, Tag, Gift, DollarSign, Calculator,
-    X, Check, Crown, AlertCircle, TrendingUp, Truck
+    X, Check, Crown, AlertCircle, TrendingUp, Truck, MapPin
 } from 'lucide-react';
 
 export default function TransaksiCreate({ 
@@ -33,36 +33,40 @@ export default function TransaksiCreate({
     flash,
     errors: serverErrors
 }) {
-    // State Management
+    // ─── Outlet state ──────────────────────────────────────────────────────
     const [currentOutletId, setCurrentOutletId] = useState(selectedOutletId);
     const [currentInvoiceCode, setCurrentInvoiceCode] = useState(invoiceCode);
     const [currentPakets, setCurrentPakets] = useState(pakets);
     const [loadingOutletData, setLoadingOutletData] = useState(false);
 
-    // Customer State
+    // ─── Customer state ────────────────────────────────────────────────────
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [showQuickAddCustomer, setShowQuickAddCustomer] = useState(false);
 
-    // Transaction Items
+    // ─── NEW: Lazy-address state ───────────────────────────────────────────
+    // alamatUpdate holds what the cashier types in when address is required.
+    const [alamatUpdate, setAlamatUpdate] = useState('');
+
+    // ─── Transaction items ─────────────────────────────────────────────────
     const [items, setItems] = useState([]);
 
-    // Surcharges State (separate from shipping)
+    // ─── Surcharges (regular, NOT shipping) ───────────────────────────────
     const [selectedSurcharges, setSelectedSurcharges] = useState([]);
     const [surchargeDistances, setSurchargeDistances] = useState({});
 
-    // REVISI 1: Shipping State (separated)
+    // ─── Shipping (separated) ─────────────────────────────────────────────
     const [selectedShipping, setSelectedShipping] = useState(null);
     const [shippingDistance, setShippingDistance] = useState(0);
 
-    // Promo & Points State
+    // ─── Promo & Points ────────────────────────────────────────────────────
     const [selectedPromo, setSelectedPromo] = useState(null);
     const [redeemPoints, setRedeemPoints] = useState(0);
 
-    // Payment Dialog
+    // ─── Payment dialog ────────────────────────────────────────────────────
     const [showPaymentDialog, setShowPaymentDialog] = useState(false);
     const [paymentAmount, setPaymentAmount] = useState('');
 
-    // Calculation State (updated structure)
+    // ─── Calculation state ─────────────────────────────────────────────────
     const [calculation, setCalculation] = useState({
         subtotal_items: 0,
         total_surcharge: 0,
@@ -80,6 +84,16 @@ export default function TransaksiCreate({
         max_redeemable_points: 0,
     });
 
+    // ─── Derived: does the cashier need to supply an address? ─────────────
+    // True when shipping is selected, its calculated cost > 0, and the
+    // customer currently has no address on file.
+    const butuhAlamat =
+        selectedShipping !== null &&
+        calculation.shipping_cost > 0 &&
+        selectedCustomer !== null &&
+        !selectedCustomer.alamat;
+
+    // ─── Sync customer id into form data ──────────────────────────────────
     useEffect(() => {
         if (selectedCustomer) {
             setData('id_customer', selectedCustomer.id);
@@ -88,7 +102,12 @@ export default function TransaksiCreate({
         }
     }, [selectedCustomer]);
 
-    // Form initialization - STATUS HARDCODED KE 'baru'
+    // Reset alamatUpdate whenever the customer changes
+    useEffect(() => {
+        setAlamatUpdate('');
+    }, [selectedCustomer]);
+
+    // ─── Form ──────────────────────────────────────────────────────────────
     const { data, setData, post, processing, errors } = useForm({
         id_outlet: currentOutletId,
         id_customer: null,
@@ -101,18 +120,18 @@ export default function TransaksiCreate({
         shipping_distance: 0,
         id_promo: null,
         redeem_points: 0,
-        // STATUS DIHAPUS DARI FORM - akan hardcoded di backend
         payment_action: 'bayar_nanti',
         jumlah_bayar: null,
+        alamat_update: null,          // NEW: sent only when butuhAlamat
     });
 
-    // Quick Add Customer Form
+    // ─── Quick-add customer form (Name + Phone only) ──────────────────────
     const quickAddForm = useForm({
         nama: '',
         no_hp: '',
-        is_member: false,
     });
 
+    // ─── Flash / server-error toasts ───────────────────────────────────────
     useEffect(() => {
         if (flash?.success) toast.success(flash.success);
         if (flash?.error) toast.error(flash.error);
@@ -126,20 +145,20 @@ export default function TransaksiCreate({
         }
     }, [serverErrors]);
 
-    // Handle Outlet Change (Admin Only)
+    // ─── Outlet switcher (admin only) ─────────────────────────────────────
     const handleOutletChange = async (outletId) => {
         if (isKasir) return;
 
         setLoadingOutletData(true);
         try {
             const response = await fetch(route('transaksi.outlet-data', outletId));
-            const data = await response.json();
+            const respData = await response.json();
 
             setCurrentOutletId(parseInt(outletId));
-            setCurrentPakets(data.pakets);
-            setCurrentInvoiceCode(data.invoiceCode);
+            setCurrentPakets(respData.pakets);
+            setCurrentInvoiceCode(respData.invoiceCode);
             setItems([]);
-            
+
             toast.success('Outlet berhasil diganti');
         } catch (error) {
             toast.error('Gagal mengambil data outlet');
@@ -148,29 +167,22 @@ export default function TransaksiCreate({
         }
     };
 
-    // Add Item
+    // ─── Item helpers ──────────────────────────────────────────────────────
     const addItem = () => {
-        setItems([...items, {
-            id: Date.now(),
-            id_paket: '',
-            qty: 1,
-            keterangan: '',
-        }]);
+        setItems([...items, { id: Date.now(), id_paket: '', qty: 1, keterangan: '' }]);
     };
 
-    // Remove Item
     const removeItem = (id) => {
         setItems(items.filter(item => item.id !== id));
     };
 
-    // Update Item
     const updateItem = (id, field, value) => {
-        setItems(items.map(item => 
+        setItems(items.map(item =>
             item.id === id ? { ...item, [field]: value } : item
         ));
     };
 
-    // Toggle Surcharge
+    // ─── Surcharge toggle ──────────────────────────────────────────────────
     const toggleSurcharge = (surchargeId) => {
         if (selectedSurcharges.includes(surchargeId)) {
             setSelectedSurcharges(selectedSurcharges.filter(id => id !== surchargeId));
@@ -182,33 +194,32 @@ export default function TransaksiCreate({
         }
     };
 
-    // Calculate Transaction Total (UPDATED with 6 revisions)
+    // ─── Calculation (unchanged logic) ────────────────────────────────────
     useEffect(() => {
         calculateTotal();
     }, [items, selectedSurcharges, surchargeDistances, selectedShipping, shippingDistance, selectedPromo, redeemPoints]);
 
     const calculateTotal = () => {
-        // Step 1: Calculate subtotal items
+        // Step 1: subtotal
         let subtotalItems = 0;
         items.forEach(item => {
             if (item.id_paket) {
                 const paket = currentPakets.find(p => p.id === parseInt(item.id_paket));
                 if (paket) {
-                    // REVISI 4: Handle empty qty to show Rp0 instead of NaN
                     const qty = parseFloat(item.qty) || 0;
                     subtotalItems += qty * parseFloat(paket.harga);
                 }
             }
         });
 
-        // Step 2: Calculate surcharges (NOT including shipping)
+        // Step 2: surcharges (not shipping)
         let totalSurcharge = 0;
         selectedSurcharges.forEach(surchargeId => {
             const surcharge = surcharges.find(s => s.id === surchargeId);
             if (!surcharge) return;
 
             if (surcharge.min_order_total && subtotalItems >= surcharge.min_order_total) {
-                return;
+                return; // free surcharge
             }
 
             let amount = 0;
@@ -217,8 +228,7 @@ export default function TransaksiCreate({
                     amount = (subtotalItems * surcharge.nominal) / 100;
                     break;
                 case 'distance':
-                    const distance = surchargeDistances[surchargeId] || 0;
-                    amount = surcharge.nominal * distance;
+                    amount = surcharge.nominal * (surchargeDistances[surchargeId] || 0);
                     break;
                 case 'fixed':
                 default:
@@ -228,13 +238,13 @@ export default function TransaksiCreate({
             totalSurcharge += amount;
         });
 
-        // REVISI 1: Calculate shipping separately
+        // Shipping (separate)
         let shippingCost = 0;
         if (selectedShipping) {
             const shipping = shippingOptions.find(s => s.id === selectedShipping);
             if (shipping) {
                 if (shipping.min_order_total && subtotalItems >= shipping.min_order_total) {
-                    shippingCost = 0; // Free shipping
+                    shippingCost = 0;
                 } else {
                     switch (shipping.calculation_type) {
                         case 'percent':
@@ -252,13 +262,10 @@ export default function TransaksiCreate({
             }
         }
 
-        // REVISI 2: Base for discount = Items + Surcharges ONLY (exclude shipping)
         const baseForDiscount = subtotalItems + totalSurcharge;
-
-        // REVISI 3: Gross total for points = Items + Surcharges ONLY (exclude shipping)
         const grossTotalForPoints = baseForDiscount;
 
-        // Step 3: Calculate discounts (applied to baseForDiscount ONLY)
+        // Promo discount
         let diskonPromo = 0;
         if (selectedPromo) {
             const promo = promos.find(p => p.id === selectedPromo);
@@ -275,33 +282,28 @@ export default function TransaksiCreate({
             }
         }
 
-        // REVISI 6: Anti-boncos points redemption with clamping
+        // Anti-boncos points clamping
         const pointsRedeemValue = settings.points_redeem_value;
         const customerAvailablePoints = selectedCustomer?.poin || 0;
-        
+
         const remainingBillAfterPromo = Math.max(0, baseForDiscount - diskonPromo);
         const maxRedeemablePointsByBill = Math.floor(remainingBillAfterPromo / pointsRedeemValue);
         const maxRedeemablePoints = Math.min(customerAvailablePoints, maxRedeemablePointsByBill);
 
-        // Auto-clamp redeemPoints if user tries to redeem more than allowed
         const actualRedeemPoints = Math.min(redeemPoints, maxRedeemablePoints);
         const diskonPoin = actualRedeemPoints * pointsRedeemValue;
 
         const totalDiskon = diskonPromo + diskonPoin;
         const totalSetelahDiskon = Math.max(0, baseForDiscount - totalDiskon);
 
-        // Step 4: Add shipping AFTER discount applied
         const totalDenganShipping = totalSetelahDiskon + shippingCost;
 
-        // Step 5: Calculate tax
-        const pajakAmount = settings.auto_apply_tax 
-            ? (totalDenganShipping * settings.tax_rate / 100) 
+        const pajakAmount = settings.auto_apply_tax
+            ? (totalDenganShipping * settings.tax_rate / 100)
             : 0;
 
-        // Step 6: Total akhir
         const totalAkhir = totalDenganShipping + pajakAmount;
 
-        // REVISI 3: Points earned from gross total (before discount, excluding shipping)
         let earnedPoints = 0;
         if (selectedCustomer && selectedCustomer.is_member && settings.points_enabled) {
             earnedPoints = Math.floor(grossTotalForPoints / settings.points_earn_ratio);
@@ -325,7 +327,7 @@ export default function TransaksiCreate({
         });
     };
 
-    // Handle Quick Add Customer
+    // ─── Quick-add customer submit ─────────────────────────────────────────
     const handleQuickAddCustomer = (e) => {
         e.preventDefault();
         quickAddForm.post(route('customers.store'), {
@@ -338,19 +340,17 @@ export default function TransaksiCreate({
         });
     };
 
-    // Handle Save Later
-    const handleSaveLater = () => {
-        if (!validateForm()) return;
-
+    // ─── Helper: build the clean payload shared by both submit paths ──────
+    const buildPayload = (paymentAction, jumlahBayar) => {
         const cleanItems = items
             .filter(item => item.id_paket && item.id_paket !== '' && item.id_paket !== 'none' && !isNaN(item.id_paket))
             .map(({ id, ...rest }) => ({
                 id_paket: parseInt(rest.id_paket),
                 qty: parseFloat(rest.qty) || 0,
-                keterangan: rest.keterangan || null
+                keterangan: rest.keterangan || null,
             }));
 
-        router.post(route('transaksi.store'), {
+        return {
             id_outlet: currentOutletId,
             id_customer: selectedCustomer.id,
             tgl: data.tgl,
@@ -362,24 +362,32 @@ export default function TransaksiCreate({
             shipping_distance: shippingDistance,
             id_promo: selectedPromo,
             redeem_points: Math.min(redeemPoints, calculation.max_redeemable_points),
-            // STATUS TIDAK DIKIRIM - backend akan set otomatis ke 'baru'
-            payment_action: 'bayar_nanti',
-            jumlah_bayar: null,
-        }, {
-            onError: (errors) => {
-                Object.values(errors).forEach(error => toast.error(error));
-            }
+            payment_action: paymentAction,
+            jumlah_bayar: jumlahBayar,
+            // NEW: only attach when the cashier was prompted and typed something
+            alamat_update: butuhAlamat && alamatUpdate.trim() ? alamatUpdate.trim() : null,
+        };
+    };
+
+    // ─── Save Later ────────────────────────────────────────────────────────
+    const handleSaveLater = () => {
+        if (!validateForm()) return;
+
+        router.post(route('transaksi.store'), buildPayload('bayar_nanti', null), {
+            onError: (errs) => {
+                Object.values(errs).forEach(error => toast.error(error));
+            },
         });
     };
 
-    // Handle Pay Now
+    // ─── Pay Now (opens dialog) ────────────────────────────────────────────
     const handlePayNow = () => {
         if (!validateForm()) return;
         setPaymentAmount(calculation.total_akhir.toString());
         setShowPaymentDialog(true);
     };
 
-    // Handle Payment Submit
+    // ─── Payment dialog submit ─────────────────────────────────────────────
     const handlePaymentSubmit = () => {
         const amount = parseFloat(paymentAmount);
         if (isNaN(amount) || amount < calculation.total_akhir) {
@@ -387,38 +395,15 @@ export default function TransaksiCreate({
             return;
         }
 
-        const cleanItems = items
-            .filter(item => item.id_paket && item.id_paket !== '' && item.id_paket !== 'none' && !isNaN(item.id_paket))
-            .map(({ id, ...rest }) => ({
-                id_paket: parseInt(rest.id_paket),
-                qty: parseFloat(rest.qty) || 0,
-                keterangan: rest.keterangan || null
-            }));
-
-        router.post(route('transaksi.store'), {
-            id_outlet: currentOutletId,
-            id_customer: selectedCustomer.id,
-            tgl: data.tgl,
-            batas_waktu: data.batas_waktu,
-            items: cleanItems,
-            surcharges: selectedSurcharges,
-            surcharge_distances: surchargeDistances,
-            shipping_id: selectedShipping,
-            shipping_distance: shippingDistance,
-            id_promo: selectedPromo,
-            redeem_points: Math.min(redeemPoints, calculation.max_redeemable_points),
-            // STATUS TIDAK DIKIRIM - backend akan set otomatis ke 'baru'
-            payment_action: 'bayar_lunas',
-            jumlah_bayar: amount,
-        }, {
+        router.post(route('transaksi.store'), buildPayload('bayar_lunas', amount), {
             onSuccess: () => setShowPaymentDialog(false),
-            onError: (errors) => {
-                Object.values(errors).forEach(error => toast.error(error));
-            }
+            onError: (errs) => {
+                Object.values(errs).forEach(error => toast.error(error));
+            },
         });
     };
 
-    // REVISI 5: Enhanced validation
+    // ─── Validation ────────────────────────────────────────────────────────
     const validateForm = () => {
         if (!currentOutletId) {
             toast.error('Pilih outlet terlebih dahulu!');
@@ -430,16 +415,15 @@ export default function TransaksiCreate({
             return false;
         }
 
-        const validItems = items.filter(item => {
-            return item.id_paket && item.id_paket !== '' && item.id_paket !== 'none' && !isNaN(item.id_paket);
-        });
+        const validItems = items.filter(item =>
+            item.id_paket && item.id_paket !== '' && item.id_paket !== 'none' && !isNaN(item.id_paket)
+        );
 
         if (validItems.length === 0) {
             toast.error('Tambahkan minimal 1 item paket!');
             return false;
         }
 
-        // REVISI 5: Validate no zero qty or zero price
         for (const item of validItems) {
             const qty = parseFloat(item.qty) || 0;
             if (qty <= 0) {
@@ -459,42 +443,38 @@ export default function TransaksiCreate({
             return false;
         }
 
+        // NEW: if address is required but empty, block submission
+        if (butuhAlamat && !alamatUpdate.trim()) {
+            toast.error('Alamat pengiriman wajib diisi karena ongkir dipilih!');
+            return false;
+        }
+
         return true;
     };
 
-    // Format Currency
-    const formatRupiah = (amount) => {
-        return new Intl.NumberFormat('id-ID', {
+    // ─── Helpers ───────────────────────────────────────────────────────────
+    const formatRupiah = (amount) =>
+        new Intl.NumberFormat('id-ID', {
             style: 'currency',
             currency: 'IDR',
             minimumFractionDigits: 0,
         }).format(amount);
-    };
 
-    // Get Promo Eligibility
     const isPromoEligible = (promo) => {
         if (!promo) return false;
-        
-        if (promo.syarat_member_only && (!selectedCustomer || !selectedCustomer.is_member)) {
-            return false;
-        }
-
-        if (promo.minimal_transaksi && calculation.base_for_discount < promo.minimal_transaksi) {
-            return false;
-        }
-
+        if (promo.syarat_member_only && (!selectedCustomer || !selectedCustomer.is_member)) return false;
+        if (promo.minimal_transaksi && calculation.base_for_discount < promo.minimal_transaksi) return false;
         return true;
     };
 
+    // ════════════════════════════════════════════════════════════════════════
+    // RENDER
+    // ════════════════════════════════════════════════════════════════════════
     return (
         <AuthenticatedLayout
             header={
                 <div className="flex items-center gap-3">
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => router.visit(route('transaksi.index'))}
-                    >
+                    <Button variant="outline" size="icon" onClick={() => router.visit(route('transaksi.index'))}>
                         <ArrowLeft className="h-4 w-4" />
                     </Button>
                     <div>
@@ -510,7 +490,7 @@ export default function TransaksiCreate({
 
             <div className="py-12">
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8 space-y-6">
-                    {/* ADMIN WARNING */}
+                    {/* Admin warning */}
                     {!isKasir && !currentOutletId && (
                         <Alert variant="destructive">
                             <AlertCircle className="h-4 w-4" />
@@ -520,7 +500,7 @@ export default function TransaksiCreate({
                         </Alert>
                     )}
 
-                    {/* Header Card */}
+                    {/* ── Header card ──────────────────────────────────────── */}
                     <Card className="border-2 border-blue-200 dark:border-blue-900">
                         <CardContent className="pt-6">
                             {isKasir ? (
@@ -530,9 +510,7 @@ export default function TransaksiCreate({
                                             <Store className="h-5 w-5 text-blue-600" />
                                             <div>
                                                 <p className="text-xs text-gray-500">Outlet</p>
-                                                <p className="font-bold text-gray-900 dark:text-gray-100">
-                                                    {userOutlet.nama}
-                                                </p>
+                                                <p className="font-bold text-gray-900 dark:text-gray-100">{userOutlet.nama}</p>
                                             </div>
                                         </div>
                                         <Separator orientation="vertical" className="h-10" />
@@ -540,25 +518,21 @@ export default function TransaksiCreate({
                                             <User className="h-5 w-5 text-blue-600" />
                                             <div>
                                                 <p className="text-xs text-gray-500">Kasir</p>
-                                                <p className="font-bold text-gray-900 dark:text-gray-100">
-                                                    {userName}
-                                                </p>
+                                                <p className="font-bold text-gray-900 dark:text-gray-100">{userName}</p>
                                             </div>
                                         </div>
                                     </div>
                                     <div className="text-right">
                                         <p className="text-xs text-gray-500">Invoice</p>
-                                        <p className="text-xl font-bold text-blue-600">
-                                            {currentInvoiceCode}
-                                        </p>
+                                        <p className="text-xl font-bold text-blue-600">{currentInvoiceCode}</p>
                                     </div>
                                 </div>
                             ) : (
                                 <div className="grid md:grid-cols-2 gap-4">
                                     <div>
                                         <Label htmlFor="outlet">Outlet *</Label>
-                                        <Select 
-                                            value={currentOutletId?.toString() || 'none'} 
+                                        <Select
+                                            value={currentOutletId?.toString() || 'none'}
                                             onValueChange={(value) => value !== 'none' && handleOutletChange(parseInt(value))}
                                             disabled={loadingOutletData}
                                         >
@@ -568,9 +542,7 @@ export default function TransaksiCreate({
                                             <SelectContent>
                                                 <SelectItem value="none">-- Pilih Outlet --</SelectItem>
                                                 {outlets?.map((outlet) => (
-                                                    <SelectItem key={outlet.id} value={outlet.id.toString()}>
-                                                        {outlet.nama}
-                                                    </SelectItem>
+                                                    <SelectItem key={outlet.id} value={outlet.id.toString()}>{outlet.nama}</SelectItem>
                                                 ))}
                                             </SelectContent>
                                         </Select>
@@ -579,9 +551,7 @@ export default function TransaksiCreate({
                                         {currentInvoiceCode ? (
                                             <div className="flex-1 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 rounded-lg border border-blue-200 dark:border-blue-900">
                                                 <p className="text-xs text-gray-500">Invoice Code</p>
-                                                <p className="text-xl font-bold text-blue-600">
-                                                    {currentInvoiceCode}
-                                                </p>
+                                                <p className="text-xl font-bold text-blue-600">{currentInvoiceCode}</p>
                                             </div>
                                         ) : (
                                             <div className="flex-1 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700">
@@ -595,33 +565,34 @@ export default function TransaksiCreate({
                         </CardContent>
                     </Card>
 
-                    {/* Main Content */}
+                    {/* ── Main content ─────────────────────────────────────── */}
                     {(isKasir || currentOutletId) && (
                         <>
                             <div className="grid lg:grid-cols-3 gap-6">
-                                {/* LEFT COLUMN */}
+                                {/* ── LEFT COLUMN ──────────────────────────── */}
                                 <div className="lg:col-span-2 space-y-6">
+
                                     {/* Customer & Date */}
                                     <Card>
                                         <CardHeader>
                                             <CardTitle className="flex items-center gap-2">
                                                 <User className="h-5 w-5" />
-                                                Informasi Customer & Jadwal
+                                                Informasi Customer &amp; Jadwal
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
                                             <div>
                                                 <Label>Customer *</Label>
                                                 <div className="flex gap-2">
-                                                    <Select 
-                                                        value={selectedCustomer?.id?.toString() || 'none'} 
+                                                    <Select
+                                                        value={selectedCustomer?.id?.toString() || 'none'}
                                                         onValueChange={(value) => {
                                                             if (value === 'none') {
                                                                 setSelectedCustomer(null);
                                                                 setRedeemPoints(0);
                                                             } else {
-                                                                const customer = customers.find(c => c.id === parseInt(value));
-                                                                setSelectedCustomer(customer);
+                                                                const cust = customers.find(c => c.id === parseInt(value));
+                                                                setSelectedCustomer(cust);
                                                                 setRedeemPoints(0);
                                                             }
                                                         }}
@@ -635,30 +606,33 @@ export default function TransaksiCreate({
                                                                 <SelectItem key={customer.id} value={customer.id.toString()}>
                                                                     <div className="flex items-center gap-2">
                                                                         <span>{customer.nama}</span>
-                                                                        {customer.is_member && (
-                                                                            <Crown className="h-3 w-3 text-yellow-500" />
-                                                                        )}
+                                                                        {customer.is_member && <Crown className="h-3 w-3 text-yellow-500" />}
                                                                         <span className="text-xs text-gray-500">({customer.no_hp})</span>
                                                                     </div>
                                                                 </SelectItem>
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
-                                                    <Button 
-                                                        type="button" 
-                                                        variant="outline"
-                                                        onClick={() => setShowQuickAddCustomer(true)}
-                                                    >
+                                                    <Button type="button" variant="outline" onClick={() => setShowQuickAddCustomer(true)}>
                                                         <Plus className="h-4 w-4 mr-2" />
                                                         Tambah
                                                     </Button>
                                                 </div>
+
+                                                {/* Customer chip */}
                                                 {selectedCustomer && (
                                                     <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border">
                                                         <div className="flex items-center justify-between">
                                                             <div>
                                                                 <p className="text-sm font-medium">{selectedCustomer.nama}</p>
                                                                 <p className="text-xs text-gray-500">{selectedCustomer.no_hp}</p>
+                                                                {/* show existing address if present */}
+                                                                {selectedCustomer.alamat && (
+                                                                    <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                                                                        <MapPin className="h-3 w-3" />
+                                                                        {selectedCustomer.alamat}
+                                                                    </p>
+                                                                )}
                                                             </div>
                                                             {selectedCustomer.is_member && (
                                                                 <div className="flex items-center gap-2">
@@ -676,21 +650,11 @@ export default function TransaksiCreate({
                                             <div className="grid md:grid-cols-2 gap-4">
                                                 <div>
                                                     <Label htmlFor="tgl">Tanggal *</Label>
-                                                    <Input
-                                                        id="tgl"
-                                                        type="date"
-                                                        value={data.tgl}
-                                                        onChange={(e) => setData('tgl', e.target.value)}
-                                                    />
+                                                    <Input id="tgl" type="date" value={data.tgl} onChange={(e) => setData('tgl', e.target.value)} />
                                                 </div>
                                                 <div>
                                                     <Label htmlFor="batas_waktu">Batas Waktu Selesai *</Label>
-                                                    <Input
-                                                        id="batas_waktu"
-                                                        type="datetime-local"
-                                                        value={data.batas_waktu}
-                                                        onChange={(e) => setData('batas_waktu', e.target.value)}
-                                                    />
+                                                    <Input id="batas_waktu" type="datetime-local" value={data.batas_waktu} onChange={(e) => setData('batas_waktu', e.target.value)} />
                                                 </div>
                                             </div>
                                         </CardContent>
@@ -724,7 +688,6 @@ export default function TransaksiCreate({
                                             ) : (
                                                 items.map((item, index) => {
                                                     const selectedPaket = currentPakets.find(p => p.id === parseInt(item.id_paket));
-                                                    // REVISI 4: Handle empty qty gracefully
                                                     const qty = parseFloat(item.qty) || 0;
                                                     const subtotal = selectedPaket ? qty * parseFloat(selectedPaket.harga) : 0;
 
@@ -732,12 +695,7 @@ export default function TransaksiCreate({
                                                         <div key={item.id} className="p-4 border rounded-lg space-y-3">
                                                             <div className="flex items-center justify-between">
                                                                 <Badge variant="outline">Item #{index + 1}</Badge>
-                                                                <Button
-                                                                    type="button"
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    onClick={() => removeItem(item.id)}
-                                                                >
+                                                                <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(item.id)}>
                                                                     <X className="h-4 w-4" />
                                                                 </Button>
                                                             </div>
@@ -747,13 +705,9 @@ export default function TransaksiCreate({
                                                                     <Label>Paket *</Label>
                                                                     <Select
                                                                         value={item.id_paket?.toString() || 'none'}
-                                                                        onValueChange={(value) => {
-                                                                            if (value === 'none') {
-                                                                                updateItem(item.id, 'id_paket', '');
-                                                                            } else {
-                                                                                updateItem(item.id, 'id_paket', parseInt(value));
-                                                                            }
-                                                                        }}
+                                                                        onValueChange={(value) =>
+                                                                            updateItem(item.id, 'id_paket', value === 'none' ? '' : parseInt(value))
+                                                                        }
                                                                     >
                                                                         <SelectTrigger>
                                                                             <SelectValue placeholder="Pilih Paket" />
@@ -770,31 +724,19 @@ export default function TransaksiCreate({
                                                                 </div>
                                                                 <div>
                                                                     <Label>Qty (kg) *</Label>
-                                                                    <Input
-                                                                        type="number"
-                                                                        step="0.01"
-                                                                        min="0.01"
-                                                                        value={item.qty}
-                                                                        onChange={(e) => updateItem(item.id, 'qty', e.target.value)}
-                                                                    />
+                                                                    <Input type="number" step="0.01" min="0.01" value={item.qty} onChange={(e) => updateItem(item.id, 'qty', e.target.value)} />
                                                                 </div>
                                                                 <div>
                                                                     <Label>Subtotal</Label>
                                                                     <div className="h-9 flex items-center px-3 bg-gray-50 dark:bg-gray-900 border rounded-md">
-                                                                        <span className="font-semibold text-green-600">
-                                                                            {formatRupiah(subtotal)}
-                                                                        </span>
+                                                                        <span className="font-semibold text-green-600">{formatRupiah(subtotal)}</span>
                                                                     </div>
                                                                 </div>
                                                             </div>
 
                                                             <div>
                                                                 <Label>Keterangan</Label>
-                                                                <Input
-                                                                    placeholder="Contoh: Noda kopi, pewangi extra"
-                                                                    value={item.keterangan}
-                                                                    onChange={(e) => updateItem(item.id, 'keterangan', e.target.value)}
-                                                                />
+                                                                <Input placeholder="Contoh: Noda kopi, pewangi extra" value={item.keterangan} onChange={(e) => updateItem(item.id, 'keterangan', e.target.value)} />
                                                             </div>
                                                         </div>
                                                     );
@@ -803,7 +745,7 @@ export default function TransaksiCreate({
                                         </CardContent>
                                     </Card>
 
-                                    {/* Surcharges (NOT including shipping) */}
+                                    {/* Surcharges (non-shipping) */}
                                     {surcharges.length > 0 && (
                                         <Card>
                                             <CardHeader>
@@ -815,24 +757,15 @@ export default function TransaksiCreate({
                                             <CardContent className="space-y-3">
                                                 {surcharges.map((surcharge) => {
                                                     const isSelected = selectedSurcharges.includes(surcharge.id);
-                                                    const isFree = surcharge.min_order_total && 
-                                                        calculation.subtotal_items >= surcharge.min_order_total;
+                                                    const isFree = surcharge.min_order_total && calculation.subtotal_items >= surcharge.min_order_total;
 
                                                     return (
                                                         <div key={surcharge.id} className="flex items-start gap-3 p-3 border rounded-lg">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={isSelected}
-                                                                onChange={() => toggleSurcharge(surcharge.id)}
-                                                                className="mt-1"
-                                                                disabled={isFree}
-                                                            />
+                                                            <input type="checkbox" checked={isSelected} onChange={() => toggleSurcharge(surcharge.id)} className="mt-1" disabled={isFree} />
                                                             <div className="flex-1">
                                                                 <div className="flex items-center gap-2">
                                                                     <p className="font-medium">{surcharge.nama}</p>
-                                                                    {isFree && (
-                                                                        <Badge className="bg-green-600">GRATIS</Badge>
-                                                                    )}
+                                                                    {isFree && <Badge className="bg-green-600">GRATIS</Badge>}
                                                                 </div>
                                                                 <p className="text-xs text-gray-500">
                                                                     {surcharge.calculation_type === 'percent' && `${surcharge.nominal}%`}
@@ -842,15 +775,9 @@ export default function TransaksiCreate({
                                                             </div>
                                                             {isSelected && surcharge.calculation_type === 'distance' && (
                                                                 <Input
-                                                                    type="number"
-                                                                    step="0.1"
-                                                                    min="0"
-                                                                    placeholder="Jarak (km)"
+                                                                    type="number" step="0.1" min="0" placeholder="Jarak (km)"
                                                                     value={surchargeDistances[surcharge.id] || ''}
-                                                                    onChange={(e) => setSurchargeDistances({
-                                                                        ...surchargeDistances,
-                                                                        [surcharge.id]: parseFloat(e.target.value) || 0
-                                                                    })}
+                                                                    onChange={(e) => setSurchargeDistances({ ...surchargeDistances, [surcharge.id]: parseFloat(e.target.value) || 0 })}
                                                                     className="w-32"
                                                                 />
                                                             )}
@@ -861,7 +788,7 @@ export default function TransaksiCreate({
                                         </Card>
                                     )}
 
-                                    {/* REVISI 1: Shipping separated */}
+                                    {/* Shipping (separated) */}
                                     {shippingOptions.length > 0 && (
                                         <Card className="border-2 border-orange-200 dark:border-orange-900">
                                             <CardHeader>
@@ -888,13 +815,10 @@ export default function TransaksiCreate({
                                                     <SelectContent>
                                                         <SelectItem value="none">Tidak ada ongkir</SelectItem>
                                                         {shippingOptions.map((shipping) => {
-                                                            const isFree = shipping.min_order_total && 
-                                                                calculation.subtotal_items >= shipping.min_order_total;
-                                                            
+                                                            const isFree = shipping.min_order_total && calculation.subtotal_items >= shipping.min_order_total;
                                                             return (
                                                                 <SelectItem key={shipping.id} value={shipping.id.toString()}>
-                                                                    {shipping.nama} - {shipping.formatted_nominal}
-                                                                    {isFree && ' (GRATIS)'}
+                                                                    {shipping.nama} - {shipping.formatted_nominal}{isFree && ' (GRATIS)'}
                                                                 </SelectItem>
                                                             );
                                                         })}
@@ -906,14 +830,7 @@ export default function TransaksiCreate({
                                                     return shipping?.calculation_type === 'distance' && (
                                                         <div>
                                                             <Label>Jarak Pengiriman (km)</Label>
-                                                            <Input
-                                                                type="number"
-                                                                step="0.1"
-                                                                min="0"
-                                                                value={shippingDistance}
-                                                                onChange={(e) => setShippingDistance(parseFloat(e.target.value) || 0)}
-                                                                placeholder="Masukkan jarak dalam kilometer"
-                                                            />
+                                                            <Input type="number" step="0.1" min="0" value={shippingDistance} onChange={(e) => setShippingDistance(parseFloat(e.target.value) || 0)} placeholder="Masukkan jarak dalam kilometer" />
                                                         </div>
                                                     );
                                                 })()}
@@ -922,11 +839,29 @@ export default function TransaksiCreate({
                                                     <div className="p-3 bg-orange-50 dark:bg-orange-900/10 rounded-lg">
                                                         <div className="flex justify-between items-center">
                                                             <span className="text-sm font-medium">Total Ongkir:</span>
-                                                            <span className="text-lg font-bold text-orange-600">
-                                                                {formatRupiah(calculation.shipping_cost)}
-                                                            </span>
+                                                            <span className="text-lg font-bold text-orange-600">{formatRupiah(calculation.shipping_cost)}</span>
                                                         </div>
                                                     </div>
+                                                )}
+
+                                                {/* NEW: lazy address input ───────────────────── */}
+                                                {butuhAlamat && (
+                                                    <Alert variant="default" className="border-amber-400 bg-amber-50 dark:bg-amber-900/10">
+                                                        <MapPin className="h-4 w-4 text-amber-600" />
+                                                        <AlertDescription className="text-sm text-amber-800 dark:text-amber-300">
+                                                            Customer belum memiliki alamat. Isikan alamat pengiriman di bawah ─ akan disimpan ke profil customer.
+                                                        </AlertDescription>
+                                                        <div className="mt-3">
+                                                            <Label htmlFor="alamat_update">Alamat Pengiriman *</Label>
+                                                            <Input
+                                                                id="alamat_update"
+                                                                value={alamatUpdate}
+                                                                onChange={(e) => setAlamatUpdate(e.target.value)}
+                                                                placeholder="Contoh: Jl. Sudirman No. 12, Jakarta Pusat"
+                                                                className={!alamatUpdate.trim() ? 'border-red-400' : ''}
+                                                            />
+                                                        </div>
+                                                    </Alert>
                                                 )}
                                             </CardContent>
                                         </Card>
@@ -937,7 +872,7 @@ export default function TransaksiCreate({
                                         <CardHeader>
                                             <CardTitle className="flex items-center gap-2">
                                                 <Tag className="h-5 w-5" />
-                                                Diskon & Promo
+                                                Diskon &amp; Promo
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
@@ -953,11 +888,7 @@ export default function TransaksiCreate({
                                                     <SelectContent>
                                                         <SelectItem value="none">Tidak ada promo</SelectItem>
                                                         {promos.map((promo) => (
-                                                            <SelectItem 
-                                                                key={promo.id} 
-                                                                value={promo.id.toString()}
-                                                                disabled={!isPromoEligible(promo)}
-                                                            >
+                                                            <SelectItem key={promo.id} value={promo.id.toString()} disabled={!isPromoEligible(promo)}>
                                                                 {promo.nama_promo} ({promo.jenis === 'percent' ? `${promo.diskon}%` : formatRupiah(promo.diskon)})
                                                             </SelectItem>
                                                         ))}
@@ -968,6 +899,7 @@ export default function TransaksiCreate({
                                                 </p>
                                             </div>
 
+                                            {/* Points redemption (member only) */}
                                             {selectedCustomer && selectedCustomer.is_member && selectedCustomer.poin > 0 && (
                                                 <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900 rounded-lg space-y-3">
                                                     <div className="flex items-center gap-2">
@@ -977,13 +909,10 @@ export default function TransaksiCreate({
                                                     <div>
                                                         <Label>Jumlah Poin</Label>
                                                         <Input
-                                                            type="number"
-                                                            min="0"
-                                                            max={calculation.max_redeemable_points}
+                                                            type="number" min="0" max={calculation.max_redeemable_points}
                                                             value={redeemPoints}
                                                             onChange={(e) => {
                                                                 const value = parseInt(e.target.value) || 0;
-                                                                // REVISI 6: Auto-clamp
                                                                 const clamped = Math.min(value, calculation.max_redeemable_points);
                                                                 setRedeemPoints(clamped);
                                                                 if (value > clamped) {
@@ -992,8 +921,7 @@ export default function TransaksiCreate({
                                                             }}
                                                         />
                                                         <p className="mt-1 text-xs text-gray-500">
-                                                            Maksimal: {calculation.max_redeemable_points} poin 
-                                                            ({formatRupiah(calculation.max_redeemable_points * settings.points_redeem_value)})
+                                                            Maksimal: {calculation.max_redeemable_points} poin ({formatRupiah(calculation.max_redeemable_points * settings.points_redeem_value)})
                                                         </p>
                                                         <p className="mt-1 text-xs text-amber-600">
                                                             ⚠️ Poin tidak akan terbuang - sistem mencegah penukaran berlebih
@@ -1003,11 +931,9 @@ export default function TransaksiCreate({
                                             )}
                                         </CardContent>
                                     </Card>
-
-                                    {/* STATUS SECTION DIHAPUS - Tidak diperlukan karena otomatis 'baru' */}
                                 </div>
 
-                                {/* RIGHT COLUMN - Summary */}
+                                {/* ── RIGHT COLUMN – Summary ──────────────── */}
                                 <div className="lg:col-span-1">
                                     <div className="sticky top-6">
                                         <Card className="border-2 border-green-200 dark:border-green-900">
@@ -1029,8 +955,7 @@ export default function TransaksiCreate({
                                                             <span className="font-medium text-orange-600">+ {formatRupiah(calculation.total_surcharge)}</span>
                                                         </div>
                                                     )}
-                                                    
-                                                    {/* REVISI 1: Show shipping separately */}
+
                                                     {calculation.shipping_cost > 0 && (
                                                         <>
                                                             <Separator />
@@ -1077,18 +1002,13 @@ export default function TransaksiCreate({
 
                                                 <div className="flex justify-between items-center p-4 bg-green-100 dark:bg-green-900/20 rounded-lg">
                                                     <span className="font-bold">TOTAL:</span>
-                                                    <span className="text-2xl font-bold text-green-600">
-                                                        {formatRupiah(calculation.total_akhir)}
-                                                    </span>
+                                                    <span className="text-2xl font-bold text-green-600">{formatRupiah(calculation.total_akhir)}</span>
                                                 </div>
 
-                                                {/* REVISI 3: Show points earned from gross total */}
                                                 {calculation.earned_points > 0 && (
                                                     <div className="flex items-center justify-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-lg border border-amber-200">
                                                         <TrendingUp className="h-4 w-4 text-amber-600" />
-                                                        <p className="text-sm font-medium">
-                                                            +{calculation.earned_points} poin
-                                                        </p>
+                                                        <p className="text-sm font-medium">+{calculation.earned_points} poin</p>
                                                     </div>
                                                 )}
 
@@ -1099,31 +1019,15 @@ export default function TransaksiCreate({
                                                 <Separator />
 
                                                 <div className="space-y-2">
-                                                    <Button
-                                                        type="button"
-                                                        onClick={handlePayNow}
-                                                        disabled={processing}
-                                                        className="w-full bg-green-600 hover:bg-green-700"
-                                                    >
+                                                    <Button type="button" onClick={handlePayNow} disabled={processing} className="w-full bg-green-600 hover:bg-green-700">
                                                         <DollarSign className="mr-2 h-4 w-4" />
                                                         Bayar Lunas
                                                     </Button>
-                                                    <Button
-                                                        type="button"
-                                                        onClick={handleSaveLater}
-                                                        disabled={processing}
-                                                        variant="outline"
-                                                        className="w-full"
-                                                    >
+                                                    <Button type="button" onClick={handleSaveLater} disabled={processing} variant="outline" className="w-full">
                                                         <Calendar className="mr-2 h-4 w-4" />
-                                                        Simpan & Bayar Nanti
+                                                        Simpan &amp; Bayar Nanti
                                                     </Button>
-                                                    <Button
-                                                        type="button"
-                                                        onClick={() => router.visit(route('transaksi.index'))}
-                                                        variant="ghost"
-                                                        className="w-full"
-                                                    >
+                                                    <Button type="button" onClick={() => router.visit(route('transaksi.index'))} variant="ghost" className="w-full">
                                                         <X className="mr-2 h-4 w-4" />
                                                         Batal
                                                     </Button>
@@ -1138,7 +1042,7 @@ export default function TransaksiCreate({
                 </div>
             </div>
 
-            {/* Quick Add Customer Dialog */}
+            {/* ── Quick-add customer dialog (Name + Phone ONLY) ──────────── */}
             <Dialog open={showQuickAddCustomer} onOpenChange={setShowQuickAddCustomer}>
                 <DialogContent>
                     <DialogHeader>
@@ -1148,41 +1052,25 @@ export default function TransaksiCreate({
                         <div className="space-y-4">
                             <div>
                                 <Label>Nama *</Label>
-                                <Input
-                                    value={quickAddForm.data.nama}
-                                    onChange={(e) => quickAddForm.setData('nama', e.target.value)}
-                                />
+                                <Input value={quickAddForm.data.nama} onChange={(e) => quickAddForm.setData('nama', e.target.value)} placeholder="Nama lengkap" />
+                                {quickAddForm.errors.nama && <p className="mt-1 text-sm text-red-500">{quickAddForm.errors.nama}</p>}
                             </div>
                             <div>
                                 <Label>No. HP *</Label>
-                                <Input
-                                    value={quickAddForm.data.no_hp}
-                                    onChange={(e) => quickAddForm.setData('no_hp', e.target.value)}
-                                />
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    id="is_member"
-                                    checked={quickAddForm.data.is_member}
-                                    onChange={(e) => quickAddForm.setData('is_member', e.target.checked)}
-                                />
-                                <Label htmlFor="is_member">Member Aktif</Label>
+                                <Input value={quickAddForm.data.no_hp} onChange={(e) => quickAddForm.setData('no_hp', e.target.value)} placeholder="08xxxxxxxxxx" />
+                                {quickAddForm.errors.no_hp && <p className="mt-1 text-sm text-red-500">{quickAddForm.errors.no_hp}</p>}
+                                <p className="mt-1 text-xs text-gray-500">Alamat dan status member akan diset secara otomatis sesuai kebutuhan.</p>
                             </div>
                         </div>
                         <DialogFooter className="mt-6">
-                            <Button type="button" variant="outline" onClick={() => setShowQuickAddCustomer(false)}>
-                                Batal
-                            </Button>
-                            <Button type="submit" disabled={quickAddForm.processing}>
-                                Tambah
-                            </Button>
+                            <Button type="button" variant="outline" onClick={() => setShowQuickAddCustomer(false)}>Batal</Button>
+                            <Button type="submit" disabled={quickAddForm.processing}>Tambah</Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>
             </Dialog>
 
-            {/* Payment Dialog */}
+            {/* ── Payment dialog ──────────────────────────────────────────── */}
             <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
                 <DialogContent>
                     <DialogHeader>
@@ -1195,31 +1083,20 @@ export default function TransaksiCreate({
                         <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg">
                             <div className="flex justify-between">
                                 <span>Total Tagihan:</span>
-                                <span className="text-xl font-bold text-blue-600">
-                                    {formatRupiah(calculation.total_akhir)}
-                                </span>
+                                <span className="text-xl font-bold text-blue-600">{formatRupiah(calculation.total_akhir)}</span>
                             </div>
                         </div>
 
                         <div>
                             <Label>Jumlah Bayar *</Label>
-                            <Input
-                                type="number"
-                                step="1000"
-                                min={calculation.total_akhir}
-                                value={paymentAmount}
-                                onChange={(e) => setPaymentAmount(e.target.value)}
-                                autoFocus
-                            />
+                            <Input type="number" step="1000" min={calculation.total_akhir} value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} autoFocus />
                         </div>
 
                         {paymentAmount && parseFloat(paymentAmount) >= calculation.total_akhir && (
                             <div className="p-4 bg-green-50 dark:bg-green-900/10 rounded-lg">
                                 <div className="flex justify-between">
                                     <span>KEMBALIAN:</span>
-                                    <span className="text-xl font-bold text-green-600">
-                                        {formatRupiah(parseFloat(paymentAmount) - calculation.total_akhir)}
-                                    </span>
+                                    <span className="text-xl font-bold text-green-600">{formatRupiah(parseFloat(paymentAmount) - calculation.total_akhir)}</span>
                                 </div>
                             </div>
                         )}
@@ -1227,18 +1104,14 @@ export default function TransaksiCreate({
                         {calculation.earned_points > 0 && (
                             <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-lg">
                                 <Check className="h-4 w-4 text-amber-600" />
-                                <p className="text-sm">
-                                    Customer akan mendapat <strong>+{calculation.earned_points} poin</strong>
-                                </p>
+                                <p className="text-sm">Customer akan mendapat <strong>+{calculation.earned_points} poin</strong></p>
                             </div>
                         )}
                     </div>
                     <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setShowPaymentDialog(false)}>
-                            Batal
-                        </Button>
-                        <Button 
-                            type="button" 
+                        <Button type="button" variant="outline" onClick={() => setShowPaymentDialog(false)}>Batal</Button>
+                        <Button
+                            type="button"
                             onClick={handlePaymentSubmit}
                             disabled={processing || !paymentAmount || parseFloat(paymentAmount) < calculation.total_akhir}
                             className="bg-green-600 hover:bg-green-700"

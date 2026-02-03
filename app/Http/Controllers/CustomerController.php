@@ -23,12 +23,11 @@ class CustomerController extends Controller
 
         $search = $request->input('search');
         $memberFilter = $request->input('member_filter');
-        
+
         $customers = Customer::query()
             ->when($search, function ($query, $search) {
                 $query->where('nama', 'like', "%{$search}%")
-                      ->orWhere('no_hp', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%");
+                      ->orWhere('no_hp', 'like', "%{$search}%");
             })
             ->when($memberFilter === 'member', function ($query) {
                 $query->members();
@@ -48,22 +47,23 @@ class CustomerController extends Controller
 
     /**
      * Store a newly created customer.
+     *
+     * Cashier quick-add only sends nama + no_hp (+ optional is_member).
+     * Email has been removed from the system entirely.
      */
     public function store(Request $request): RedirectResponse
     {
         $this->authorizePermission('customer.create');
 
         $validated = $request->validate([
-            'nama' => 'required|string|max:255',
-            'no_hp' => 'required|string|max:20|unique:customers,no_hp',
-            'alamat' => 'nullable|string',
-            'email' => 'nullable|email|max:255',
+            'nama'      => 'required|string|max:255',
+            'no_hp'     => 'required|string|max:20|unique:customers,no_hp',
+            'alamat'    => 'nullable|string',
             'is_member' => 'boolean',
         ], [
-            'nama.required' => 'Nama pelanggan wajib diisi',
+            'nama.required'  => 'Nama pelanggan wajib diisi',
             'no_hp.required' => 'Nomor HP wajib diisi',
-            'no_hp.unique' => 'Nomor HP sudah terdaftar',
-            'email.email' => 'Format email tidak valid',
+            'no_hp.unique'   => 'Nomor HP sudah terdaftar',
         ]);
 
         try {
@@ -83,16 +83,14 @@ class CustomerController extends Controller
         $this->authorizePermission('customer.update');
 
         $validated = $request->validate([
-            'nama' => 'required|string|max:255',
-            'no_hp' => 'required|string|max:20|unique:customers,no_hp,' . $customer->id,
-            'alamat' => 'nullable|string',
-            'email' => 'nullable|email|max:255',
+            'nama'      => 'required|string|max:255',
+            'no_hp'     => 'required|string|max:20|unique:customers,no_hp,' . $customer->id,
+            'alamat'    => 'nullable|string',
             'is_member' => 'boolean',
         ], [
-            'nama.required' => 'Nama pelanggan wajib diisi',
+            'nama.required'  => 'Nama pelanggan wajib diisi',
             'no_hp.required' => 'Nomor HP wajib diisi',
-            'no_hp.unique' => 'Nomor HP sudah terdaftar',
-            'email.email' => 'Format email tidak valid',
+            'no_hp.unique'   => 'Nomor HP sudah terdaftar',
         ]);
 
         try {
@@ -126,7 +124,11 @@ class CustomerController extends Controller
     }
 
     /**
-     * Toggle member status
+     * Toggle member status (admin-only manual override).
+     *
+     * Auto-member is handled automatically in TransaksiController after
+     * 5 successful transactions.  This endpoint remains available for
+     * edge-case manual corrections by an admin.
      */
     public function toggleMember(Customer $customer): RedirectResponse
     {
@@ -178,17 +180,17 @@ class CustomerController extends Controller
         $validated = $request->validate([
             'action' => 'required|in:add,subtract',
             'points' => 'required|integer|min:1',
-            'notes' => 'required|string|max:500',
+            'notes'  => 'required|string|max:500',
         ], [
             'action.required' => 'Pilih aksi tambah atau kurangi poin',
             'points.required' => 'Jumlah poin wajib diisi',
-            'points.min' => 'Jumlah poin minimal 1',
-            'notes.required' => 'Catatan wajib diisi',
+            'points.min'      => 'Jumlah poin minimal 1',
+            'notes.required'  => 'Catatan wajib diisi',
         ]);
 
         try {
-            $points = $validated['action'] === 'add' 
-                ? $validated['points'] 
+            $points = $validated['action'] === 'add'
+                ? $validated['points']
                 : -$validated['points'];
 
             // Check if deducting and points are insufficient

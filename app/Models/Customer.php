@@ -15,7 +15,6 @@ class Customer extends Model
         'nama',
         'no_hp',
         'alamat',
-        'email',
         'is_member',
         'poin',
         'user_id',
@@ -79,7 +78,7 @@ class Customer extends Model
 
     /**
      * Method untuk menambah poin dengan history
-     * 
+     *
      * @param int $points Jumlah poin yang ditambahkan
      * @param string $type Type history: 'earn', 'adjustment'
      * @param array $data Additional data (notes, transaction_amount, reference, dll)
@@ -102,7 +101,7 @@ class Customer extends Model
 
     /**
      * Method untuk mengurangi poin dengan history
-     * 
+     *
      * @param int $points Jumlah poin yang dikurangi
      * @param string $type Type history: 'redeem', 'adjustment'
      * @param array $data Additional data (notes, reference, dll)
@@ -129,7 +128,7 @@ class Customer extends Model
 
     /**
      * Method untuk koreksi poin manual (bisa + atau -)
-     * 
+     *
      * @param int $points Jumlah poin (positif untuk tambah, negatif untuk kurang)
      * @param string $notes Catatan wajib
      * @return PointHistory
@@ -150,7 +149,7 @@ class Customer extends Model
 
     /**
      * Hitung poin yang didapat dari nominal transaksi
-     * 
+     *
      * @param float $amount Nominal transaksi
      * @return int Jumlah poin
      */
@@ -171,7 +170,7 @@ class Customer extends Model
 
     /**
      * Hitung nilai Rupiah dari sejumlah poin
-     * 
+     *
      * @param int $points Jumlah poin
      * @return float Nilai dalam Rupiah
      */

@@ -21,6 +21,7 @@ class TransaksiController extends Controller
 {
     use HasAuthorization;
 
+    // ------------------------------------------------------------------ index
     /**
      * Display a listing of transactions with outlet scoping
      */
@@ -89,6 +90,7 @@ class TransaksiController extends Controller
         ]);
     }
 
+    // ---------------------------------------------------------------- create
     /**
      * Show the form for creating a new transaction
      * UPDATED: Separate shipping from surcharges
@@ -98,13 +100,13 @@ class TransaksiController extends Controller
         $this->authorizePermission('transaksi.create');
 
         $user = $request->user();
-        
+
         // Determine selected outlet
         if ($user->id_outlet !== null) {
             $selectedOutletId = $user->id_outlet;
         } else {
             $selectedOutletId = $request->input('outlet_id');
-            
+
             if (!$selectedOutletId) {
                 $firstOutlet = Outlet::orderBy('nama')->first();
                 $selectedOutletId = $firstOutlet ? $firstOutlet->id : null;
@@ -112,12 +114,12 @@ class TransaksiController extends Controller
         }
 
         // Get outlets for admin
-        $outlets = $user->id_outlet === null 
+        $outlets = $user->id_outlet === null
             ? Outlet::select('id', 'nama')->orderBy('nama')->get()
             : null;
 
         // Get customers
-        $customers = Customer::select('id', 'nama', 'no_hp', 'is_member', 'poin')
+        $customers = Customer::select('id', 'nama', 'no_hp', 'alamat', 'is_member', 'poin')
             ->orderBy('nama')
             ->get();
 
@@ -175,6 +177,7 @@ class TransaksiController extends Controller
         ]);
     }
 
+    // --------------------------------------------------------- getOutletData
     /**
      * Get data for specific outlet (for admin outlet switcher)
      */
@@ -200,9 +203,18 @@ class TransaksiController extends Controller
         ]);
     }
 
+    // ------------------------------------------------------------------ store
     /**
-     * Store a newly created transaction
-     * UPDATED: New calculation logic with 6 revisions
+     * Store a newly created transaction.
+     *
+     * NEW (Step 2):
+     *   – `alamat_update` is validated as nullable|string.
+     *   – After the transaction is committed:
+     *       1. If `alamat_update` is present, the customer's `alamat` is saved.
+     *       2. Auto-Member: if the customer now has >= 5 non-cancelled
+     *          transactions and is not yet a member, `is_member` is flipped.
+     *
+     * All existing calculation / points logic is unchanged.
      */
     public function store(Request $request): RedirectResponse
     {
@@ -210,7 +222,7 @@ class TransaksiController extends Controller
 
         Log::info('Transaksi Store Request', ['data' => $request->all()]);
 
-        // REVISI 5: Enhanced validation
+        // REVISI 5: Enhanced validation  +  alamat_update (Step 2)
         $validated = $request->validate([
             'id_outlet' => 'required|exists:outlets,id',
             'id_customer' => 'required|exists:customers,id',
@@ -218,7 +230,7 @@ class TransaksiController extends Controller
             'batas_waktu' => 'required|date|after:tgl',
             'items' => 'required|array|min:1',
             'items.*.id_paket' => 'required|exists:pakets,id',
-            'items.*.qty' => 'required|numeric|min:0.01', // Tidak boleh 0
+            'items.*.qty' => 'required|numeric|min:0.01',
             'items.*.keterangan' => 'nullable|string|max:500',
             'surcharges' => 'nullable|array',
             'surcharges.*' => 'exists:surcharges,id',
@@ -227,9 +239,10 @@ class TransaksiController extends Controller
             'shipping_distance' => 'nullable|numeric|min:0',
             'id_promo' => 'nullable|exists:promos,id',
             'redeem_points' => 'nullable|integer|min:0',
-            // status tidak perlu validasi - akan hardcoded ke 'baru'
             'payment_action' => 'required|in:bayar_nanti,bayar_lunas',
             'jumlah_bayar' => 'required_if:payment_action,bayar_lunas|nullable|numeric|min:0',
+            // --- NEW: lazy address update from cashier ---
+            'alamat_update' => 'nullable|string|max:1000',
         ], [
             'id_outlet.required' => 'Outlet wajib dipilih',
             'id_customer.required' => 'Customer wajib dipilih',
@@ -353,10 +366,41 @@ class TransaksiController extends Controller
 
             DB::commit();
 
+            // ============================================================
+            // POST-COMMIT SIDE-EFFECTS (Step 2)
+            // These run outside the main transaction so that a failure
+            // here does NOT roll back a perfectly valid invoice.
+            // ============================================================
+
+            // 1. Lazy address update ─── only when the cashier supplied one
+            if (!empty($validated['alamat_update'])) {
+                $customer->update(['alamat' => $validated['alamat_update']]);
+                Log::info('Customer alamat updated (lazy)', [
+                    'customer_id' => $customer->id,
+                    'alamat' => $validated['alamat_update'],
+                ]);
+            }
+
+            // 2. Auto-Member promotion ─── fires once when threshold is hit
+            if (!$customer->is_member) {
+                $successfulTransactions = $customer->transaksis()
+                    ->where('status', '!=', 'batal')
+                    ->count();
+
+                if ($successfulTransactions >= 5) {
+                    $customer->update(['is_member' => true]);
+                    Log::info('Auto-Member activated', [
+                        'customer_id' => $customer->id,
+                        'transaction_count' => $successfulTransactions,
+                    ]);
+                }
+            }
+            // ============================================================
+
             Log::info('Transaction Saved Successfully', ['transaksi_id' => $transaksi->id]);
 
-            return redirect()->route('transaksi.index')->with('success', 
-                $validated['payment_action'] === 'bayar_lunas' 
+            return redirect()->route('transaksi.index')->with('success',
+                $validated['payment_action'] === 'bayar_lunas'
                     ? "Transaksi berhasil dibuat dan pembayaran telah diterima! Invoice: {$transaksi->kode_invoice}"
                     : "Transaksi berhasil dibuat! Invoice: {$transaksi->kode_invoice}"
             );
@@ -371,6 +415,7 @@ class TransaksiController extends Controller
         }
     }
 
+    // --------------------------------------------------------------------- show
     /**
      * Display the specified transaction
      */
@@ -398,6 +443,7 @@ class TransaksiController extends Controller
         ]);
     }
 
+    // ------------------------------------------------------------ updateStatus
     /**
      * Update transaction status
      */
@@ -424,6 +470,7 @@ class TransaksiController extends Controller
         }
     }
 
+    // --------------------------------------------------------- processPayment
     /**
      * Process payment for unpaid transaction
      * UPDATED: Points calculation from gross
@@ -460,7 +507,7 @@ class TransaksiController extends Controller
 
             // REVISI 3: Award points from GROSS TOTAL (before discount)
             if ($transaksi->customer->is_member) {
-                $grossTotal = $transaksi->total_sebelum_diskon; // Sudah termasuk surcharge + shipping
+                $grossTotal = $transaksi->total_sebelum_diskon;
                 $earnedPoints = Customer::calculatePointsFromAmount($grossTotal);
                 if ($earnedPoints > 0) {
                     $transaksi->customer->addPoints($earnedPoints, 'earn', [
@@ -482,6 +529,7 @@ class TransaksiController extends Controller
         }
     }
 
+    // ---------------------------------------------------------------- destroy
     /**
      * Remove the specified transaction
      */
@@ -522,6 +570,7 @@ class TransaksiController extends Controller
         }
     }
 
+    // -------------------------------------------------------- generateInvoice
     /**
      * Generate unique invoice code
      */
@@ -545,9 +594,10 @@ class TransaksiController extends Controller
         return $prefix . '-' . str_pad($newNumber, 4, '0', STR_PAD_LEFT);
     }
 
+    // --------------------------------------------------------- calculateTotal
     /**
      * Calculate transaction total with NEW LOGIC (6 Revisions Applied)
-     * 
+     *
      * REVISI 1: Ongkir separated from surcharges
      * REVISI 2: Discount scope does NOT include shipping
      * REVISI 3: Points earned from GROSS TOTAL (before discount, excluding shipping)
@@ -608,7 +658,7 @@ class TransaksiController extends Controller
         // REVISI 6: Anti-boncos points redemption with clamping
         $pointsRedeemValue = (float) Setting::getValue('points_redeem_value', 500);
         $customerAvailablePoints = $customer->poin;
-        
+
         // Maximum points that can be redeemed = min(customer's points, remaining bill value)
         $remainingBillAfterPromo = max(0, $baseForDiscount - $diskonPromo);
         $maxRedeemablePointsByBill = floor($remainingBillAfterPromo / $pointsRedeemValue);
@@ -627,7 +677,7 @@ class TransaksiController extends Controller
         // Step 5: Calculate tax on (discounted subtotal + shipping)
         $taxRate = (float) Setting::getValue('tax_rate', 11);
         $autoApplyTax = Setting::getValue('auto_apply_tax', true);
-        
+
         $pajakAmount = $autoApplyTax ? ($totalDenganShipping * $taxRate / 100) : 0;
 
         // Step 6: Total akhir

@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { 
     ArrowLeft, Award, Gift, TrendingUp, TrendingDown, 
-    Plus, Minus, History, Phone, Mail, MapPin, Crown,
+    Plus, Minus, History, Phone, MapPin, Crown,
     Calendar, User, Edit
 } from 'lucide-react';
 
@@ -118,9 +118,10 @@ export default function CustomerShow({ customer, pointHistories, pointsSettings,
 
             <div className="py-12">
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8 space-y-6">
-                    {/* Customer Info Card */}
+                    {/* ── Customer Info + Points ─────────────────────────── */}
                     <div className="grid md:grid-cols-2 gap-6">
-                        {/* Basic Info */}
+
+                        {/* Basic Info ── email row removed */}
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
@@ -133,18 +134,19 @@ export default function CustomerShow({ customer, pointHistories, pointsSettings,
                                     <Phone className="h-4 w-4 text-gray-400" />
                                     <span className="text-sm">{customer.no_hp}</span>
                                 </div>
-                                {customer.email && (
-                                    <div className="flex items-center gap-3">
-                                        <Mail className="h-4 w-4 text-gray-400" />
-                                        <span className="text-sm">{customer.email}</span>
-                                    </div>
-                                )}
-                                {customer.alamat && (
+
+                                {customer.alamat ? (
                                     <div className="flex items-start gap-3">
                                         <MapPin className="h-4 w-4 text-gray-400 mt-0.5" />
                                         <span className="text-sm">{customer.alamat}</span>
                                     </div>
+                                ) : (
+                                    <div className="flex items-start gap-3">
+                                        <MapPin className="h-4 w-4 text-gray-400 mt-0.5" />
+                                        <span className="text-sm text-gray-400 italic">Alamat belum diisi ─ akan otomatis terisi saat pengiriman pertama</span>
+                                    </div>
                                 )}
+
                                 <div className="pt-2">
                                     {customer.is_member ? (
                                         <Badge className="bg-gradient-to-r from-yellow-500 to-amber-600">
@@ -152,7 +154,10 @@ export default function CustomerShow({ customer, pointHistories, pointsSettings,
                                             Member Aktif
                                         </Badge>
                                     ) : (
-                                        <Badge variant="secondary">Pelanggan Reguler</Badge>
+                                        <div className="flex items-center gap-2">
+                                            <Badge variant="secondary">Pelanggan Reguler</Badge>
+                                            <span className="text-xs text-gray-400">(Member otomatis setelah 5 transaksi)</span>
+                                        </div>
                                     )}
                                 </div>
                             </CardContent>
@@ -175,7 +180,7 @@ export default function CustomerShow({ customer, pointHistories, pointsSettings,
                                             </div>
                                             <p className="text-sm text-gray-500 mt-1">Poin Tersedia</p>
                                         </div>
-                                        
+
                                         <div className="p-3 bg-green-50 dark:bg-green-900/10 rounded-lg">
                                             <p className="text-xs text-gray-600 dark:text-gray-400">Nilai Tukar</p>
                                             <p className="text-lg font-semibold text-green-600">
@@ -183,8 +188,8 @@ export default function CustomerShow({ customer, pointHistories, pointsSettings,
                                             </p>
                                         </div>
 
-                                        <Button 
-                                            onClick={openAdjustDialog} 
+                                        <Button
+                                            onClick={openAdjustDialog}
                                             className="w-full"
                                             variant="outline"
                                         >
@@ -197,7 +202,7 @@ export default function CustomerShow({ customer, pointHistories, pointsSettings,
                         )}
                     </div>
 
-                    {/* Points History */}
+                    {/* ── Points History ─────────────────────────────────── */}
                     {pointsSettings.enabled && (
                         <Card>
                             <CardHeader>
@@ -231,7 +236,7 @@ export default function CustomerShow({ customer, pointHistories, pointsSettings,
                                                 {pointHistories.map((history) => {
                                                     const badgeInfo = getHistoryBadge(history.type);
                                                     const Icon = badgeInfo.icon;
-                                                    
+
                                                     return (
                                                         <TableRow key={history.id}>
                                                             <TableCell className="text-sm">
@@ -277,7 +282,7 @@ export default function CustomerShow({ customer, pointHistories, pointsSettings,
                 </div>
             </div>
 
-            {/* Adjust Points Dialog */}
+            {/* ── Adjust Points Dialog ─────────────────────────────────── */}
             <Dialog open={isAdjustDialogOpen} onOpenChange={setIsAdjustDialogOpen}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
@@ -289,16 +294,16 @@ export default function CustomerShow({ customer, pointHistories, pointsSettings,
                             Tambah atau kurangi poin pelanggan secara manual
                         </DialogDescription>
                     </DialogHeader>
-                    
+
                     <form onSubmit={handleAdjustSubmit}>
                         <div className="space-y-4">
-                            {/* Current Balance Info */}
+                            {/* Current Balance */}
                             <div className="p-3 bg-amber-50 dark:bg-amber-900/10 rounded-lg border border-amber-200 dark:border-amber-900">
                                 <p className="text-xs text-gray-600 dark:text-gray-400">Saldo Poin Saat Ini</p>
                                 <p className="text-2xl font-bold text-amber-600">{customer.poin}</p>
                             </div>
 
-                            {/* Action Selection */}
+                            {/* Action */}
                             <div>
                                 <Label htmlFor="action">Aksi *</Label>
                                 <Select
@@ -373,7 +378,7 @@ export default function CustomerShow({ customer, pointHistories, pointsSettings,
                                         <span className={`font-semibold ${
                                             data.action === 'add' ? 'text-green-600' : 'text-red-600'
                                         }`}>
-                                            {data.action === 'add' 
+                                            {data.action === 'add'
                                                 ? customer.poin + parseInt(data.points || 0)
                                                 : Math.max(0, customer.poin - parseInt(data.points || 0))
                                             }

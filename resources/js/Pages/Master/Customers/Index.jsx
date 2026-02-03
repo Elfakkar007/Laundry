@@ -29,7 +29,7 @@ import {
     DialogFooter,
 } from '@/Components/ui/dialog';
 import { toast } from 'sonner';
-import { Pencil, Trash2, Plus, Search, Users, Crown, Phone, Mail, MapPin, Award, Eye, Gift } from 'lucide-react';
+import { Pencil, Trash2, Plus, Search, Users, Crown, Phone, MapPin, Award, Eye, Gift } from 'lucide-react';
 
 export default function CustomersIndex({ customers, filters, flash }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -41,7 +41,6 @@ export default function CustomersIndex({ customers, filters, flash }) {
         nama: '',
         no_hp: '',
         alamat: '',
-        email: '',
         is_member: false,
     });
 
@@ -66,7 +65,6 @@ export default function CustomersIndex({ customers, filters, flash }) {
             nama: customer.nama,
             no_hp: customer.no_hp,
             alamat: customer.alamat || '',
-            email: customer.email || '',
             is_member: customer.is_member,
         });
         setIsDialogOpen(true);
@@ -100,9 +98,9 @@ export default function CustomersIndex({ customers, filters, flash }) {
 
     const handleSearch = (e) => {
         e.preventDefault();
-        router.get(route('customers.index'), { 
+        router.get(route('customers.index'), {
             search: searchTerm,
-            member_filter: memberFilter 
+            member_filter: memberFilter,
         }, {
             preserveState: true,
             replace: true,
@@ -111,9 +109,9 @@ export default function CustomersIndex({ customers, filters, flash }) {
 
     const handleFilterChange = (value) => {
         setMemberFilter(value);
-        router.get(route('customers.index'), { 
+        router.get(route('customers.index'), {
             search: searchTerm,
-            member_filter: value 
+            member_filter: value,
         }, {
             preserveState: true,
             replace: true,
@@ -169,7 +167,7 @@ export default function CustomersIndex({ customers, filters, flash }) {
                                     <form onSubmit={handleSearch} className="flex gap-2 flex-1 max-w-md">
                                         <Input
                                             type="text"
-                                            placeholder="Cari nama, HP, atau email..."
+                                            placeholder="Cari nama atau HP..."
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
                                             className="flex-1"
@@ -178,7 +176,7 @@ export default function CustomersIndex({ customers, filters, flash }) {
                                             <Search className="h-4 w-4" />
                                         </Button>
                                     </form>
-                                    
+
                                     <div className="flex gap-2">
                                         <Select value={memberFilter} onValueChange={handleFilterChange}>
                                             <SelectTrigger className="w-[180px]">
@@ -199,7 +197,7 @@ export default function CustomersIndex({ customers, filters, flash }) {
                                 </div>
                             </div>
 
-                            {/* Table */}
+                            {/* Table ── Email column removed */}
                             <div className="rounded-md border">
                                 <Table>
                                     <TableHeader>
@@ -207,8 +205,8 @@ export default function CustomersIndex({ customers, filters, flash }) {
                                             <TableHead className="w-[50px]">No</TableHead>
                                             <TableHead>Nama</TableHead>
                                             <TableHead>No. HP</TableHead>
-                                            <TableHead>Email</TableHead>
-                                            <TableHead className="text-center">Status & Poin</TableHead>
+                                            <TableHead>Alamat</TableHead>
+                                            <TableHead className="text-center">Status &amp; Poin</TableHead>
                                             <TableHead className="text-right w-[150px]">Aksi</TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -239,10 +237,10 @@ export default function CustomersIndex({ customers, filters, flash }) {
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>
-                                                        {customer.email ? (
+                                                        {customer.alamat ? (
                                                             <div className="flex items-center gap-2 text-sm">
-                                                                <Mail className="h-3 w-3 text-gray-400" />
-                                                                {customer.email}
+                                                                <MapPin className="h-3 w-3 text-gray-400" />
+                                                                {customer.alamat}
                                                             </div>
                                                         ) : (
                                                             <span className="text-gray-400">-</span>
@@ -304,7 +302,7 @@ export default function CustomersIndex({ customers, filters, flash }) {
                 </div>
             </div>
 
-            {/* Dialog Form */}
+            {/* Dialog Form ── email field removed */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
@@ -322,7 +320,7 @@ export default function CustomersIndex({ customers, filters, flash }) {
                             )}
                         </DialogTitle>
                     </DialogHeader>
-                    
+
                     <form onSubmit={handleSubmit}>
                         <div className="space-y-4">
                             {/* Nama */}
@@ -359,22 +357,6 @@ export default function CustomersIndex({ customers, filters, flash }) {
                                 </p>
                             </div>
 
-                            {/* Email */}
-                            <div>
-                                <Label htmlFor="email">Email (Opsional)</Label>
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    value={data.email}
-                                    onChange={(e) => setData('email', e.target.value)}
-                                    placeholder="customer@example.com"
-                                    className={errors.email ? 'border-red-500' : ''}
-                                />
-                                {errors.email && (
-                                    <p className="mt-1 text-sm text-red-500">{errors.email}</p>
-                                )}
-                            </div>
-
                             {/* Alamat */}
                             <div>
                                 <Label htmlFor="alamat">Alamat (Opsional)</Label>
@@ -390,7 +372,7 @@ export default function CustomersIndex({ customers, filters, flash }) {
                                 )}
                             </div>
 
-                            {/* Member Status */}
+                            {/* Member Status toggle ── kept for admin master-data page */}
                             <div className="flex items-center justify-between p-4 border rounded-lg bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/10 dark:to-amber-900/10">
                                 <div className="flex items-center gap-3">
                                     <Crown className={`h-5 w-5 ${data.is_member ? 'text-yellow-500' : 'text-gray-400'}`} />
@@ -399,7 +381,7 @@ export default function CustomersIndex({ customers, filters, flash }) {
                                             Member Aktif
                                         </Label>
                                         <p className="text-xs text-gray-500">
-                                            {data.is_member ? 'Pelanggan dengan benefit khusus' : 'Pelanggan reguler'}
+                                            {data.is_member ? 'Pelanggan dengan benefit khusus' : 'Akan otomatis naik setelah 5 transaksi'}
                                         </p>
                                     </div>
                                 </div>
