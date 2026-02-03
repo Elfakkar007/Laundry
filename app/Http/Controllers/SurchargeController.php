@@ -17,6 +17,7 @@ class SurchargeController extends Controller
     {
         $search = $request->input('search');
         $statusFilter = $request->input('status_filter');
+        $categoryFilter = $request->input('category_filter'); // NEW: Category filter
         
         $surcharges = Surcharge::query()
             ->when($search, function ($query, $search) {
@@ -29,13 +30,21 @@ class SurchargeController extends Controller
             ->when($statusFilter === 'inactive', function ($query) {
                 $query->where('is_active', false);
             })
+            // NEW: Filter by category
+            ->when($categoryFilter === 'surcharge', function ($query) {
+                $query->where('category', 'surcharge');
+            })
+            ->when($categoryFilter === 'shipping', function ($query) {
+                $query->where('category', 'shipping');
+            })
+            ->orderBy('category', 'asc') // Sort by category first
             ->orderBy('created_at', 'desc')
             ->paginate(10)
             ->withQueryString();
 
         return Inertia::render('Finance/Surcharges/Index', [
             'surcharges' => $surcharges,
-            'filters' => $request->only(['search', 'status_filter']),
+            'filters' => $request->only(['search', 'status_filter', 'category_filter']),
         ]);
     }
 
@@ -48,24 +57,27 @@ class SurchargeController extends Controller
             'nama' => 'required|string|max:255',
             'nominal' => 'required|numeric|min:0',
             'calculation_type' => 'required|in:fixed,percent,distance',
+            'category' => 'required|in:surcharge,shipping', // NEW: Validate category
             'min_order_total' => 'nullable|numeric|min:0',
             'keterangan' => 'nullable|string',
             'is_active' => 'boolean',
         ], [
-            'nama.required' => 'Nama biaya tambahan wajib diisi',
+            'nama.required' => 'Nama wajib diisi',
             'nominal.required' => 'Nominal wajib diisi',
             'nominal.min' => 'Nominal harus lebih dari 0',
             'calculation_type.required' => 'Tipe perhitungan wajib dipilih',
             'calculation_type.in' => 'Tipe perhitungan tidak valid',
+            'category.required' => 'Kategori wajib dipilih',
+            'category.in' => 'Kategori tidak valid',
             'min_order_total.min' => 'Minimal transaksi harus lebih dari 0',
         ]);
 
         try {
             Surcharge::create($validated);
 
-            return redirect()->back()->with('success', 'Biaya tambahan berhasil ditambahkan!');
+            return redirect()->back()->with('success', 'Biaya/Ongkir berhasil ditambahkan!');
         } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Gagal menambahkan biaya tambahan: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal menambahkan: ' . $e->getMessage());
         }
     }
 
@@ -78,24 +90,27 @@ class SurchargeController extends Controller
             'nama' => 'required|string|max:255',
             'nominal' => 'required|numeric|min:0',
             'calculation_type' => 'required|in:fixed,percent,distance',
+            'category' => 'required|in:surcharge,shipping', // NEW: Validate category
             'min_order_total' => 'nullable|numeric|min:0',
             'keterangan' => 'nullable|string',
             'is_active' => 'boolean',
         ], [
-            'nama.required' => 'Nama biaya tambahan wajib diisi',
+            'nama.required' => 'Nama wajib diisi',
             'nominal.required' => 'Nominal wajib diisi',
             'nominal.min' => 'Nominal harus lebih dari 0',
             'calculation_type.required' => 'Tipe perhitungan wajib dipilih',
             'calculation_type.in' => 'Tipe perhitungan tidak valid',
+            'category.required' => 'Kategori wajib dipilih',
+            'category.in' => 'Kategori tidak valid',
             'min_order_total.min' => 'Minimal transaksi harus lebih dari 0',
         ]);
 
         try {
             $surcharge->update($validated);
 
-            return redirect()->back()->with('success', 'Biaya tambahan berhasil diupdate!');
+            return redirect()->back()->with('success', 'Biaya/Ongkir berhasil diupdate!');
         } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Gagal mengupdate biaya tambahan: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal mengupdate: ' . $e->getMessage());
         }
     }
 
@@ -106,10 +121,9 @@ class SurchargeController extends Controller
     {
         try {
             $surcharge->delete();
-
-            return redirect()->back()->with('success', 'Biaya tambahan berhasil dihapus!');
+            return redirect()->back()->with('success', 'Biaya/Ongkir berhasil dihapus!');
         } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Gagal menghapus biaya tambahan: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal menghapus: ' . $e->getMessage());
         }
     }
 
@@ -124,7 +138,7 @@ class SurchargeController extends Controller
             ]);
 
             $status = $surcharge->is_active ? 'diaktifkan' : 'dinonaktifkan';
-            return redirect()->back()->with('success', "Biaya tambahan berhasil {$status}!");
+            return redirect()->back()->with('success', "Biaya/Ongkir berhasil {$status}!");
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Gagal mengubah status: ' . $e->getMessage());
         }

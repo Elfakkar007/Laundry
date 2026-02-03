@@ -10,18 +10,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Switch } from '@/Components/ui/switch';
 import { toast } from 'sonner';
-import { Pencil, Trash2, Plus, Search, DollarSign, Percent, CreditCard, MapPin, Gift, Truck } from 'lucide-react';
+import { Pencil, Trash2, Plus, Search, DollarSign, Percent, CreditCard, MapPin, Gift, Truck, Package } from 'lucide-react';
 
 export default function SurchargesIndex({ surcharges, filters, flash }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingSurcharge, setEditingSurcharge] = useState(null);
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
     const [statusFilter, setStatusFilter] = useState(filters.status_filter || 'all');
+    const [categoryFilter, setCategoryFilter] = useState(filters.category_filter || 'all'); // NEW
 
     const { data, setData, post, put, processing, errors, reset } = useForm({
         nama: '',
         nominal: '',
         calculation_type: 'fixed',
+        category: 'surcharge', // NEW: Default category
         min_order_total: '',
         keterangan: '',
         is_active: true,
@@ -52,6 +54,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
             nama: surcharge.nama,
             nominal: surcharge.nominal,
             calculation_type: surcharge.calculation_type,
+            category: surcharge.category, // NEW
             min_order_total: surcharge.min_order_total || '',
             keterangan: surcharge.keterangan || '',
             is_active: surcharge.is_active,
@@ -90,7 +93,8 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
     };
 
     const handleDelete = (surcharge) => {
-        if (confirm(`Yakin ingin menghapus biaya "${surcharge.nama}"?`)) {
+        const categoryLabel = surcharge.category === 'shipping' ? 'ongkir' : 'biaya';
+        if (confirm(`Yakin ingin menghapus ${categoryLabel} "${surcharge.nama}"?`)) {
             router.delete(route('surcharges.destroy', surcharge.id));
         }
     };
@@ -103,7 +107,8 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
         e.preventDefault();
         router.get(route('surcharges.index'), { 
             search: searchTerm,
-            status_filter: statusFilter 
+            status_filter: statusFilter,
+            category_filter: categoryFilter // NEW
         }, {
             preserveState: true,
             replace: true,
@@ -114,7 +119,21 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
         setStatusFilter(value);
         router.get(route('surcharges.index'), { 
             search: searchTerm,
-            status_filter: value 
+            status_filter: value,
+            category_filter: categoryFilter // NEW
+        }, {
+            preserveState: true,
+            replace: true,
+        });
+    };
+
+    // NEW: Handle category filter
+    const handleCategoryFilterChange = (value) => {
+        setCategoryFilter(value);
+        router.get(route('surcharges.index'), { 
+            search: searchTerm,
+            status_filter: statusFilter,
+            category_filter: value
         }, {
             preserveState: true,
             replace: true,
@@ -181,11 +200,11 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
             header={
                 <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200 flex items-center gap-2">
                     <CreditCard className="h-5 w-5" />
-                    Biaya Tambahan
+                    Manajemen Biaya & Ongkir
                 </h2>
             }
         >
-            <Head title="Biaya Tambahan" />
+            <Head title="Biaya & Ongkir" />
 
             <div className="py-12">
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
@@ -195,7 +214,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                 <form onSubmit={handleSearch} className="flex gap-2 flex-1 max-w-md">
                                     <Input
                                         type="text"
-                                        placeholder="Cari biaya tambahan..."
+                                        placeholder="Cari biaya atau ongkir..."
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                         className="flex-1"
@@ -206,6 +225,28 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                 </form>
                                 
                                 <div className="flex gap-2">
+                                    {/* NEW: Category Filter */}
+                                    <Select value={categoryFilter} onValueChange={handleCategoryFilterChange}>
+                                        <SelectTrigger className="w-[180px]">
+                                            <SelectValue placeholder="Filter Kategori" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Semua Kategori</SelectItem>
+                                            <SelectItem value="surcharge">
+                                                <div className="flex items-center gap-2">
+                                                    <Package className="h-4 w-4" />
+                                                    Biaya Tambahan
+                                                </div>
+                                            </SelectItem>
+                                            <SelectItem value="shipping">
+                                                <div className="flex items-center gap-2">
+                                                    <Truck className="h-4 w-4" />
+                                                    Ongkir
+                                                </div>
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+
                                     <Select value={statusFilter} onValueChange={handleFilterChange}>
                                         <SelectTrigger className="w-[180px]">
                                             <SelectValue placeholder="Filter Status" />
@@ -219,7 +260,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
 
                                     <Button onClick={openCreateDialog}>
                                         <Plus className="mr-2 h-4 w-4" />
-                                        Tambah Biaya
+                                        Tambah
                                     </Button>
                                 </div>
                             </div>
@@ -229,7 +270,8 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead className="w-[50px]">No</TableHead>
-                                            <TableHead>Nama Biaya</TableHead>
+                                            <TableHead>Nama</TableHead>
+                                            <TableHead className="text-center">Kategori</TableHead> {/* NEW */}
                                             <TableHead className="text-center">Tipe</TableHead>
                                             <TableHead className="text-right">Nominal</TableHead>
                                             <TableHead className="text-center">Gratis Ongkir</TableHead>
@@ -241,79 +283,98 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                     <TableBody>
                                         {surcharges.data.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                                                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                                                     <CreditCard className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                                                    <p>Tidak ada data biaya tambahan</p>
+                                                    <p>Tidak ada data biaya atau ongkir</p>
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            surcharges.data.map((surcharge, index) => (
-                                                <TableRow key={surcharge.id}>
-                                                    <TableCell>{surcharges.from + index}</TableCell>
-                                                    <TableCell className="font-medium">
-                                                        <div className="flex items-center gap-2">
-                                                            {surcharge.calculation_type === 'distance' && (
-                                                                <Truck className="h-4 w-4 text-green-600" />
-                                                            )}
-                                                            {surcharge.nama}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-center">
-                                                        <Badge 
-                                                            variant="outline" 
-                                                            className={`flex items-center gap-1 w-fit mx-auto ${getTypeBadge(surcharge.calculation_type).className}`}
-                                                        >
-                                                            {getTypeIcon(surcharge.calculation_type)}
-                                                            {getTypeBadge(surcharge.calculation_type).label}
-                                                        </Badge>
-                                                    </TableCell>
-                                                    <TableCell className="text-right font-medium">
-                                                        {formatNominal(surcharge.nominal, surcharge.calculation_type)}
-                                                    </TableCell>
-                                                    <TableCell className="text-center">
-                                                        {surcharge.min_order_total ? (
-                                                            <div className="flex flex-col items-center gap-1">
-                                                                <Badge variant="outline" className="border-green-500 text-green-600 flex items-center gap-1">
-                                                                    <Gift className="h-3 w-3" />
-                                                                    Aktif
-                                                                </Badge>
-                                                                <span className="text-xs text-gray-500">
-                                                                    Min. {formatRupiah(surcharge.min_order_total)}
-                                                                </span>
+                                            surcharges.data.map((surcharge, index) => {
+                                                const isFree = surcharge.min_order_total && 
+                                                    surcharge.min_order_total > 0;
+
+                                                return (
+                                                    <TableRow key={surcharge.id}>
+                                                        <TableCell>{surcharges.from + index}</TableCell>
+                                                        <TableCell className="font-medium">
+                                                            <div className="flex items-center gap-2">
+                                                                {surcharge.category === 'shipping' ? (
+                                                                    <Truck className="h-4 w-4 text-orange-600" />
+                                                                ) : (
+                                                                    <Package className="h-4 w-4 text-blue-600" />
+                                                                )}
+                                                                {surcharge.nama}
                                                             </div>
-                                                        ) : (
-                                                            <Badge variant="secondary">Tidak</Badge>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell className="max-w-xs truncate text-sm text-gray-600">
-                                                        {surcharge.keterangan || '-'}
-                                                    </TableCell>
-                                                    <TableCell className="text-center">
-                                                        <Switch
-                                                            checked={surcharge.is_active}
-                                                            onCheckedChange={() => handleToggleActive(surcharge)}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        <div className="flex justify-end gap-2">
-                                                            <Button
+                                                        </TableCell>
+                                                        {/* NEW: Category Column */}
+                                                        <TableCell className="text-center">
+                                                            <Badge 
                                                                 variant="outline"
-                                                                size="icon"
-                                                                onClick={() => openEditDialog(surcharge)}
+                                                                className={surcharge.category === 'shipping' 
+                                                                    ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400'
+                                                                    : 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+                                                                }
                                                             >
-                                                                <Pencil className="h-4 w-4" />
-                                                            </Button>
-                                                            <Button
-                                                                variant="destructive"
-                                                                size="icon"
-                                                                onClick={() => handleDelete(surcharge)}
+                                                                {surcharge.category === 'shipping' ? 'Ongkir' : 'Biaya Tambahan'}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            <Badge 
+                                                                variant="outline" 
+                                                                className={`flex items-center gap-1 w-fit mx-auto ${getTypeBadge(surcharge.calculation_type).className}`}
                                                             >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </Button>
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
+                                                                {getTypeIcon(surcharge.calculation_type)}
+                                                                {getTypeBadge(surcharge.calculation_type).label}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-medium">
+                                                            {formatNominal(surcharge.nominal, surcharge.calculation_type)}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            {isFree ? (
+                                                                <div className="flex flex-col items-center gap-1">
+                                                                    <Badge variant="outline" className="border-green-500 text-green-600 flex items-center gap-1">
+                                                                        <Gift className="h-3 w-3" />
+                                                                        Aktif
+                                                                    </Badge>
+                                                                    <span className="text-xs text-gray-500">
+                                                                        Min. {formatRupiah(surcharge.min_order_total)}
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <Badge variant="secondary">Tidak</Badge>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="max-w-xs truncate text-sm text-gray-600">
+                                                            {surcharge.keterangan || '-'}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            <Switch
+                                                                checked={surcharge.is_active}
+                                                                onCheckedChange={() => handleToggleActive(surcharge)}
+                                                            />
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <div className="flex justify-end gap-2">
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    onClick={() => openEditDialog(surcharge)}
+                                                                >
+                                                                    <Pencil className="h-4 w-4" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="destructive"
+                                                                    size="icon"
+                                                                    onClick={() => handleDelete(surcharge)}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })
                                         )}
                                     </TableBody>
                                 </Table>
@@ -338,6 +399,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                 </div>
             </div>
 
+            {/* Dialog Form */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
@@ -345,12 +407,12 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                             {editingSurcharge ? (
                                 <>
                                     <Pencil className="h-5 w-5" />
-                                    Edit Biaya Tambahan
+                                    Edit Biaya/Ongkir
                                 </>
                             ) : (
                                 <>
                                     <Plus className="h-5 w-5" />
-                                    Tambah Biaya Tambahan
+                                    Tambah Biaya/Ongkir
                                 </>
                             )}
                         </DialogTitle>
@@ -358,13 +420,50 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                     
                     <form onSubmit={handleSubmit}>
                         <div className="space-y-4">
+                            {/* NEW: Category Selection */}
                             <div>
-                                <Label htmlFor="nama">Nama Biaya *</Label>
+                                <Label htmlFor="category">Kategori *</Label>
+                                <Select
+                                    value={data.category}
+                                    onValueChange={(value) => setData('category', value)}
+                                >
+                                    <SelectTrigger className={errors.category ? 'border-red-500' : ''}>
+                                        <SelectValue placeholder="Pilih Kategori" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="surcharge">
+                                            <div className="flex items-center gap-2">
+                                                <Package className="h-4 w-4" />
+                                                Biaya Tambahan
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="shipping">
+                                            <div className="flex items-center gap-2">
+                                                <Truck className="h-4 w-4" />
+                                                Ongkos Kirim
+                                            </div>
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {errors.category && (
+                                    <p className="mt-1 text-sm text-red-500">{errors.category}</p>
+                                )}
+                                {/* NEW: Warning about points */}
+                                <p className="mt-1 text-xs text-gray-500">
+                                    {data.category === 'shipping' 
+                                        ? '⚠️ Ongkir TIDAK akan dihitung untuk perolehan poin member'
+                                        : 'ℹ️ Biaya tambahan akan dihitung dalam perolehan poin member'
+                                    }
+                                </p>
+                            </div>
+
+                            <div>
+                                <Label htmlFor="nama">Nama *</Label>
                                 <Input
                                     id="nama"
                                     value={data.nama}
                                     onChange={(e) => setData('nama', e.target.value)}
-                                    placeholder="Contoh: Ongkir, Biaya Parkir, Admin Fee"
+                                    placeholder={data.category === 'shipping' ? 'Contoh: Ongkir Express, Ongkir Regular' : 'Contoh: Biaya Parkir, Admin Fee'}
                                     className={errors.nama ? 'border-red-500' : ''}
                                 />
                                 {errors.nama && (
@@ -405,19 +504,6 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                 {errors.calculation_type && (
                                     <p className="mt-1 text-sm text-red-500">{errors.calculation_type}</p>
                                 )}
-                                
-                                {/* Helper Text */}
-                                <div className="mt-2 text-xs text-gray-500 space-y-1">
-                                    {data.calculation_type === 'fixed' && (
-                                        <p>• Nominal tetap yang akan ditambahkan ke transaksi</p>
-                                    )}
-                                    {data.calculation_type === 'percent' && (
-                                        <p>• Persentase dari subtotal transaksi (sebelum pajak)</p>
-                                    )}
-                                    {data.calculation_type === 'distance' && (
-                                        <p>• Biaya per kilometer (cocok untuk ongkir)</p>
-                                    )}
-                                </div>
                             </div>
 
                             <div>
@@ -444,10 +530,10 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                         <Gift className={`h-5 w-5 ${enableFreeShipping ? 'text-green-600' : 'text-gray-400'}`} />
                                         <div>
                                             <Label htmlFor="enable_free_shipping" className="cursor-pointer font-semibold">
-                                                Aktifkan Gratis Ongkir
+                                                Aktifkan Gratis Biaya
                                             </Label>
                                             <p className="text-xs text-gray-500">
-                                                Biaya gratis jika subtotal mencapai minimal tertentu
+                                                {data.category === 'shipping' ? 'Gratis ongkir' : 'Gratis biaya'} jika subtotal mencapai minimal tertentu
                                             </p>
                                         </div>
                                     </div>
