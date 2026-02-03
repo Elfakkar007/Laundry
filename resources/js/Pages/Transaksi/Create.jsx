@@ -7,21 +7,22 @@ import { Label } from '@/Components/ui/label';
 import { Badge } from '@/Components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/Components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Separator } from '@/Components/ui/separator';
 import { Alert, AlertDescription } from '@/Components/ui/alert';
 import { toast } from 'sonner';
 import { 
-    ArrowLeft, Plus, Trash2, Store, User, Calendar, Clock, 
+    ArrowLeft, Plus, Trash2, Store, User, Calendar, 
     Package, CreditCard, Tag, Gift, DollarSign, Calculator,
-    X, Check, Crown, AlertCircle, Receipt, TrendingUp, MapPin
+    X, Check, Crown, AlertCircle, TrendingUp, Truck
 } from 'lucide-react';
 
 export default function TransaksiCreate({ 
     outlets, 
     customers, 
     pakets, 
-    surcharges, 
+    surcharges,
+    shippingOptions, 
     promos, 
     settings,
     invoiceCode,
@@ -45,9 +46,13 @@ export default function TransaksiCreate({
     // Transaction Items
     const [items, setItems] = useState([]);
 
-    // Surcharges State
+    // Surcharges State (separate from shipping)
     const [selectedSurcharges, setSelectedSurcharges] = useState([]);
     const [surchargeDistances, setSurchargeDistances] = useState({});
+
+    // REVISI 1: Shipping State (separated)
+    const [selectedShipping, setSelectedShipping] = useState(null);
+    const [shippingDistance, setShippingDistance] = useState(0);
 
     // Promo & Points State
     const [selectedPromo, setSelectedPromo] = useState(null);
@@ -57,21 +62,24 @@ export default function TransaksiCreate({
     const [showPaymentDialog, setShowPaymentDialog] = useState(false);
     const [paymentAmount, setPaymentAmount] = useState('');
 
-    // Calculation State
+    // Calculation State (updated structure)
     const [calculation, setCalculation] = useState({
         subtotal_items: 0,
         total_surcharge: 0,
-        total_dengan_surcharge: 0,
+        shipping_cost: 0,
+        base_for_discount: 0,
+        gross_total_for_points: 0,
         diskon_promo: 0,
         diskon_poin: 0,
         total_diskon: 0,
         total_setelah_diskon: 0,
+        total_dengan_shipping: 0,
         pajak_amount: 0,
         total_akhir: 0,
         earned_points: 0,
+        max_redeemable_points: 0,
     });
 
-    // Tambahkan useEffect ini di bagian atas component (setelah useState)
     useEffect(() => {
         if (selectedCustomer) {
             setData('id_customer', selectedCustomer.id);
@@ -80,12 +88,7 @@ export default function TransaksiCreate({
         }
     }, [selectedCustomer]);
 
-    useEffect(() => {
-    const validItems = items.filter(item => item.id_paket);
-    console.log('✅ Valid items dengan paket:', validItems);
-    }, [items]);
-
-    // FIXED: Form initialization
+    // Form initialization - STATUS HARDCODED KE 'baru'
     const { data, setData, post, processing, errors } = useForm({
         id_outlet: currentOutletId,
         id_customer: null,
@@ -94,9 +97,11 @@ export default function TransaksiCreate({
         items: [],
         surcharges: [],
         surcharge_distances: {},
+        shipping_id: null,
+        shipping_distance: 0,
         id_promo: null,
         redeem_points: 0,
-        status: 'baru',
+        // STATUS DIHAPUS DARI FORM - akan hardcoded di backend
         payment_action: 'bayar_nanti',
         jumlah_bayar: null,
     });
@@ -113,7 +118,6 @@ export default function TransaksiCreate({
         if (flash?.error) toast.error(flash.error);
     }, [flash]);
 
-    // Show server errors
     useEffect(() => {
         if (serverErrors && Object.keys(serverErrors).length > 0) {
             Object.values(serverErrors).forEach(error => {
@@ -158,9 +162,9 @@ export default function TransaksiCreate({
     const removeItem = (id) => {
         setItems(items.filter(item => item.id !== id));
     };
+
     // Update Item
     const updateItem = (id, field, value) => {
-        console.log('🔄 Update Item:', { id, field, value });
         setItems(items.map(item => 
             item.id === id ? { ...item, [field]: value } : item
         ));
@@ -178,22 +182,26 @@ export default function TransaksiCreate({
         }
     };
 
-    // Calculate Transaction Total
+    // Calculate Transaction Total (UPDATED with 6 revisions)
     useEffect(() => {
         calculateTotal();
-    }, [items, selectedSurcharges, surchargeDistances, selectedPromo, redeemPoints]);
+    }, [items, selectedSurcharges, surchargeDistances, selectedShipping, shippingDistance, selectedPromo, redeemPoints]);
 
     const calculateTotal = () => {
+        // Step 1: Calculate subtotal items
         let subtotalItems = 0;
         items.forEach(item => {
             if (item.id_paket) {
                 const paket = currentPakets.find(p => p.id === parseInt(item.id_paket));
                 if (paket) {
-                    subtotalItems += parseFloat(item.qty) * parseFloat(paket.harga);
+                    // REVISI 4: Handle empty qty to show Rp0 instead of NaN
+                    const qty = parseFloat(item.qty) || 0;
+                    subtotalItems += qty * parseFloat(paket.harga);
                 }
             }
         });
 
+        // Step 2: Calculate surcharges (NOT including shipping)
         let totalSurcharge = 0;
         selectedSurcharges.forEach(surchargeId => {
             const surcharge = surcharges.find(s => s.id === surchargeId);
@@ -220,54 +228,100 @@ export default function TransaksiCreate({
             totalSurcharge += amount;
         });
 
-        const totalDenganSurcharge = subtotalItems + totalSurcharge;
+        // REVISI 1: Calculate shipping separately
+        let shippingCost = 0;
+        if (selectedShipping) {
+            const shipping = shippingOptions.find(s => s.id === selectedShipping);
+            if (shipping) {
+                if (shipping.min_order_total && subtotalItems >= shipping.min_order_total) {
+                    shippingCost = 0; // Free shipping
+                } else {
+                    switch (shipping.calculation_type) {
+                        case 'percent':
+                            shippingCost = (subtotalItems * shipping.nominal) / 100;
+                            break;
+                        case 'distance':
+                            shippingCost = shipping.nominal * (shippingDistance || 0);
+                            break;
+                        case 'fixed':
+                        default:
+                            shippingCost = parseFloat(shipping.nominal);
+                            break;
+                    }
+                }
+            }
+        }
 
+        // REVISI 2: Base for discount = Items + Surcharges ONLY (exclude shipping)
+        const baseForDiscount = subtotalItems + totalSurcharge;
+
+        // REVISI 3: Gross total for points = Items + Surcharges ONLY (exclude shipping)
+        const grossTotalForPoints = baseForDiscount;
+
+        // Step 3: Calculate discounts (applied to baseForDiscount ONLY)
         let diskonPromo = 0;
         if (selectedPromo) {
             const promo = promos.find(p => p.id === selectedPromo);
             if (promo) {
-                if (!promo.minimal_transaksi || totalDenganSurcharge >= promo.minimal_transaksi) {
+                if (!promo.minimal_transaksi || baseForDiscount >= promo.minimal_transaksi) {
                     if (!promo.syarat_member_only || (selectedCustomer && selectedCustomer.is_member)) {
                         if (promo.jenis === 'percent') {
-                            diskonPromo = (totalDenganSurcharge * promo.diskon) / 100;
+                            diskonPromo = (baseForDiscount * promo.diskon) / 100;
                         } else {
-                            diskonPromo = Math.min(parseFloat(promo.diskon), totalDenganSurcharge);
+                            diskonPromo = Math.min(parseFloat(promo.diskon), baseForDiscount);
                         }
                     }
                 }
             }
         }
 
-        let diskonPoin = 0;
-        if (redeemPoints > 0 && selectedCustomer) {
-            diskonPoin = redeemPoints * settings.points_redeem_value;
-        }
+        // REVISI 6: Anti-boncos points redemption with clamping
+        const pointsRedeemValue = settings.points_redeem_value;
+        const customerAvailablePoints = selectedCustomer?.poin || 0;
+        
+        const remainingBillAfterPromo = Math.max(0, baseForDiscount - diskonPromo);
+        const maxRedeemablePointsByBill = Math.floor(remainingBillAfterPromo / pointsRedeemValue);
+        const maxRedeemablePoints = Math.min(customerAvailablePoints, maxRedeemablePointsByBill);
+
+        // Auto-clamp redeemPoints if user tries to redeem more than allowed
+        const actualRedeemPoints = Math.min(redeemPoints, maxRedeemablePoints);
+        const diskonPoin = actualRedeemPoints * pointsRedeemValue;
 
         const totalDiskon = diskonPromo + diskonPoin;
-        const totalSetelahDiskon = Math.max(0, totalDenganSurcharge - totalDiskon);
+        const totalSetelahDiskon = Math.max(0, baseForDiscount - totalDiskon);
 
+        // Step 4: Add shipping AFTER discount applied
+        const totalDenganShipping = totalSetelahDiskon + shippingCost;
+
+        // Step 5: Calculate tax
         const pajakAmount = settings.auto_apply_tax 
-            ? (totalSetelahDiskon * settings.tax_rate / 100) 
+            ? (totalDenganShipping * settings.tax_rate / 100) 
             : 0;
 
-        const totalAkhir = totalSetelahDiskon + pajakAmount;
+        // Step 6: Total akhir
+        const totalAkhir = totalDenganShipping + pajakAmount;
 
+        // REVISI 3: Points earned from gross total (before discount, excluding shipping)
         let earnedPoints = 0;
         if (selectedCustomer && selectedCustomer.is_member && settings.points_enabled) {
-            earnedPoints = Math.floor(totalAkhir / settings.points_earn_ratio);
+            earnedPoints = Math.floor(grossTotalForPoints / settings.points_earn_ratio);
         }
 
         setCalculation({
             subtotal_items: subtotalItems,
             total_surcharge: totalSurcharge,
-            total_dengan_surcharge: totalDenganSurcharge,
+            shipping_cost: shippingCost,
+            base_for_discount: baseForDiscount,
+            gross_total_for_points: grossTotalForPoints,
             diskon_promo: diskonPromo,
             diskon_poin: diskonPoin,
             total_diskon: totalDiskon,
             total_setelah_diskon: totalSetelahDiskon,
+            total_dengan_shipping: totalDenganShipping,
             pajak_amount: pajakAmount,
             total_akhir: totalAkhir,
             earned_points: earnedPoints,
+            max_redeemable_points: maxRedeemablePoints,
         });
     };
 
@@ -284,74 +338,18 @@ export default function TransaksiCreate({
         });
     };
 
-  // Ganti fungsi handleSaveLater dengan ini
+    // Handle Save Later
     const handleSaveLater = () => {
         if (!validateForm()) return;
 
         const cleanItems = items
-            .filter(item => item.id_paket && 
-                        item.id_paket !== '' && 
-                        item.id_paket !== 'none' && 
-                        item.id_paket !== 0 &&
-                        !isNaN(item.id_paket))
+            .filter(item => item.id_paket && item.id_paket !== '' && item.id_paket !== 'none' && !isNaN(item.id_paket))
             .map(({ id, ...rest }) => ({
                 id_paket: parseInt(rest.id_paket),
-                qty: parseFloat(rest.qty),
+                qty: parseFloat(rest.qty) || 0,
                 keterangan: rest.keterangan || null
             }));
 
-        // GUNAKAN router.post, BUKAN post dari useForm
-        router.post(route('transaksi.store'), {
-            // Masukkan semua data payload di sini (argumen ke-2)
-            id_outlet: currentOutletId,
-            id_customer: selectedCustomer.id,
-            tgl: data.tgl,
-            batas_waktu: data.batas_waktu,
-            items: cleanItems, // Item yang sudah dibersihkan kini akan terkirim
-            surcharges: selectedSurcharges,
-            surcharge_distances: surchargeDistances,
-            id_promo: selectedPromo,
-            redeem_points: redeemPoints,
-            status: data.status,
-            payment_action: 'bayar_nanti',
-            jumlah_bayar: null,
-        }, {
-            // Options (argumen ke-3)
-            onError: (errors) => {
-                console.error('❌ Validation errors:', errors);
-                // Opsional: Jika Anda ingin toast error muncul
-                Object.values(errors).forEach(error => toast.error(error));
-            }
-        });
-    };
-    // FIXED: Handle Pay Now
-    const handlePayNow = () => {
-        if (!validateForm()) return;
-        setPaymentAmount(calculation.total_akhir.toString());
-        setShowPaymentDialog(true);
-    };
-
-  // Ganti fungsi handlePaymentSubmit dengan ini
-    const handlePaymentSubmit = () => {
-        const amount = parseFloat(paymentAmount);
-        if (isNaN(amount) || amount < calculation.total_akhir) {
-            toast.error('Jumlah bayar kurang dari total tagihan!');
-            return;
-        }
-
-        const cleanItems = items
-            .filter(item => item.id_paket && 
-                        item.id_paket !== '' && 
-                        item.id_paket !== 'none' && 
-                        item.id_paket !== 0 &&
-                        !isNaN(item.id_paket))
-            .map(({ id, ...rest }) => ({
-                id_paket: parseInt(rest.id_paket),
-                qty: parseFloat(rest.qty),
-                keterangan: rest.keterangan || null
-            }));
-
-        // GUNAKAN router.post di sini juga
         router.post(route('transaksi.store'), {
             id_outlet: currentOutletId,
             id_customer: selectedCustomer.id,
@@ -360,9 +358,56 @@ export default function TransaksiCreate({
             items: cleanItems,
             surcharges: selectedSurcharges,
             surcharge_distances: surchargeDistances,
+            shipping_id: selectedShipping,
+            shipping_distance: shippingDistance,
             id_promo: selectedPromo,
-            redeem_points: redeemPoints,
-            status: data.status,
+            redeem_points: Math.min(redeemPoints, calculation.max_redeemable_points),
+            // STATUS TIDAK DIKIRIM - backend akan set otomatis ke 'baru'
+            payment_action: 'bayar_nanti',
+            jumlah_bayar: null,
+        }, {
+            onError: (errors) => {
+                Object.values(errors).forEach(error => toast.error(error));
+            }
+        });
+    };
+
+    // Handle Pay Now
+    const handlePayNow = () => {
+        if (!validateForm()) return;
+        setPaymentAmount(calculation.total_akhir.toString());
+        setShowPaymentDialog(true);
+    };
+
+    // Handle Payment Submit
+    const handlePaymentSubmit = () => {
+        const amount = parseFloat(paymentAmount);
+        if (isNaN(amount) || amount < calculation.total_akhir) {
+            toast.error('Jumlah bayar kurang dari total tagihan!');
+            return;
+        }
+
+        const cleanItems = items
+            .filter(item => item.id_paket && item.id_paket !== '' && item.id_paket !== 'none' && !isNaN(item.id_paket))
+            .map(({ id, ...rest }) => ({
+                id_paket: parseInt(rest.id_paket),
+                qty: parseFloat(rest.qty) || 0,
+                keterangan: rest.keterangan || null
+            }));
+
+        router.post(route('transaksi.store'), {
+            id_outlet: currentOutletId,
+            id_customer: selectedCustomer.id,
+            tgl: data.tgl,
+            batas_waktu: data.batas_waktu,
+            items: cleanItems,
+            surcharges: selectedSurcharges,
+            surcharge_distances: surchargeDistances,
+            shipping_id: selectedShipping,
+            shipping_distance: shippingDistance,
+            id_promo: selectedPromo,
+            redeem_points: Math.min(redeemPoints, calculation.max_redeemable_points),
+            // STATUS TIDAK DIKIRIM - backend akan set otomatis ke 'baru'
             payment_action: 'bayar_lunas',
             jumlah_bayar: amount,
         }, {
@@ -372,32 +417,9 @@ export default function TransaksiCreate({
             }
         });
     };
-    // Validate Form
-    const validateForm = () => {
-        console.log('=== VALIDASI FORM ===');
-        console.log('currentOutletId:', currentOutletId);
-        console.log('selectedCustomer:', selectedCustomer);
-        console.log('items:', items);
-        
-        // Filter lebih ketat untuk paket
-        const validItems = items.filter(item => {
-            return item.id_paket && 
-                item.id_paket !== '' && 
-                item.id_paket !== 'none' && 
-                item.id_paket !== 0 &&
-                !isNaN(item.id_paket);
-        });
-        
-        console.log('✅ Valid items dengan paket:', validItems);
-        console.log('items dengan id_paket (detail):', items.map(item => ({
-            id: item.id,
-            id_paket: item.id_paket,
-            qty: item.qty,
-            tipe_data: typeof item.id_paket,
-            is_valid: item.id_paket && item.id_paket !== '' && item.id_paket !== 'none'
-        })));
-        console.log('batas_waktu:', data.batas_waktu);
 
+    // REVISI 5: Enhanced validation
+    const validateForm = () => {
         if (!currentOutletId) {
             toast.error('Pilih outlet terlebih dahulu!');
             return false;
@@ -408,18 +430,32 @@ export default function TransaksiCreate({
             return false;
         }
 
+        const validItems = items.filter(item => {
+            return item.id_paket && item.id_paket !== '' && item.id_paket !== 'none' && !isNaN(item.id_paket);
+        });
+
         if (validItems.length === 0) {
             toast.error('Tambahkan minimal 1 item paket!');
             return false;
         }
 
-        if (!data.batas_waktu) {
-            toast.error('Tentukan batas waktu pengerjaan!');
-            return false;
+        // REVISI 5: Validate no zero qty or zero price
+        for (const item of validItems) {
+            const qty = parseFloat(item.qty) || 0;
+            if (qty <= 0) {
+                toast.error('Quantity tidak boleh 0 atau kosong!');
+                return false;
+            }
+
+            const paket = currentPakets.find(p => p.id === parseInt(item.id_paket));
+            if (paket && parseFloat(paket.harga) <= 0) {
+                toast.error(`Paket "${paket.nama_paket}" memiliki harga Rp0 dan tidak dapat digunakan!`);
+                return false;
+            }
         }
 
-        if (redeemPoints > 0 && selectedCustomer && redeemPoints > selectedCustomer.poin) {
-            toast.error('Poin customer tidak mencukupi!');
+        if (!data.batas_waktu) {
+            toast.error('Tentukan batas waktu pengerjaan!');
             return false;
         }
 
@@ -443,7 +479,7 @@ export default function TransaksiCreate({
             return false;
         }
 
-        if (promo.minimal_transaksi && calculation.total_dengan_surcharge < promo.minimal_transaksi) {
+        if (promo.minimal_transaksi && calculation.base_for_discount < promo.minimal_transaksi) {
             return false;
         }
 
@@ -453,7 +489,7 @@ export default function TransaksiCreate({
     return (
         <AuthenticatedLayout
             header={
-            <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3">
                     <Button
                         variant="outline"
                         size="icon"
@@ -465,7 +501,7 @@ export default function TransaksiCreate({
                         <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">
                             Transaksi Baru
                         </h2>
-                        <p className="text-sm text-gray-500">Buat transaksi laundry baru</p>
+                        <p className="text-sm text-gray-500">Buat transaksi laundry baru (Status otomatis: Baru)</p>
                     </div>
                 </div>
             }
@@ -474,7 +510,7 @@ export default function TransaksiCreate({
 
             <div className="py-12">
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8 space-y-6">
-                    {/* ADMIN WARNING: No outlet selected */}
+                    {/* ADMIN WARNING */}
                     {!isKasir && !currentOutletId && (
                         <Alert variant="destructive">
                             <AlertCircle className="h-4 w-4" />
@@ -484,11 +520,10 @@ export default function TransaksiCreate({
                         </Alert>
                     )}
 
-                    {/* Header Card - Outlet & Invoice */}
+                    {/* Header Card */}
                     <Card className="border-2 border-blue-200 dark:border-blue-900">
                         <CardContent className="pt-6">
                             {isKasir ? (
-                                /* KASIR VIEW - Fixed Header */
                                 <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 rounded-lg">
                                     <div className="flex items-center gap-6">
                                         <div className="flex items-center gap-2">
@@ -519,7 +554,6 @@ export default function TransaksiCreate({
                                     </div>
                                 </div>
                             ) : (
-                                /* ADMIN VIEW - Outlet Switcher */
                                 <div className="grid md:grid-cols-2 gap-4">
                                     <div>
                                         <Label htmlFor="outlet">Outlet *</Label>
@@ -540,9 +574,6 @@ export default function TransaksiCreate({
                                                 ))}
                                             </SelectContent>
                                         </Select>
-                                        <p className="mt-1 text-xs text-gray-500">
-                                            Data paket akan disesuaikan dengan outlet yang dipilih
-                                        </p>
                                     </div>
                                     <div className="flex items-end">
                                         {currentInvoiceCode ? (
@@ -551,7 +582,6 @@ export default function TransaksiCreate({
                                                 <p className="text-xl font-bold text-blue-600">
                                                     {currentInvoiceCode}
                                                 </p>
-                                                <p className="text-xs text-gray-400">Auto-generated</p>
                                             </div>
                                         ) : (
                                             <div className="flex-1 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700">
@@ -565,14 +595,13 @@ export default function TransaksiCreate({
                         </CardContent>
                     </Card>
 
-                    {/* Only show form if outlet is selected */}
+                    {/* Main Content */}
                     {(isKasir || currentOutletId) && (
                         <>
-                            {/* Main Content Grid */}
                             <div className="grid lg:grid-cols-3 gap-6">
-                                {/* LEFT COLUMN - Form Inputs */}
+                                {/* LEFT COLUMN */}
                                 <div className="lg:col-span-2 space-y-6">
-                                    {/* Customer & Date Section */}
+                                    {/* Customer & Date */}
                                     <Card>
                                         <CardHeader>
                                             <CardTitle className="flex items-center gap-2">
@@ -589,10 +618,10 @@ export default function TransaksiCreate({
                                                         onValueChange={(value) => {
                                                             if (value === 'none') {
                                                                 setSelectedCustomer(null);
+                                                                setRedeemPoints(0);
                                                             } else {
                                                                 const customer = customers.find(c => c.id === parseInt(value));
                                                                 setSelectedCustomer(customer);
-                                                                setData('id_customer', customer.id); 
                                                                 setRedeemPoints(0);
                                                             }
                                                         }}
@@ -662,15 +691,12 @@ export default function TransaksiCreate({
                                                         value={data.batas_waktu}
                                                         onChange={(e) => setData('batas_waktu', e.target.value)}
                                                     />
-                                                    {errors.batas_waktu && (
-                                                        <p className="mt-1 text-sm text-red-500">{errors.batas_waktu}</p>
-                                                    )}
                                                 </div>
                                             </div>
                                         </CardContent>
                                     </Card>
 
-                                    {/* Items Section */}
+                                    {/* Items */}
                                     <Card>
                                         <CardHeader>
                                             <CardTitle className="flex items-center justify-between">
@@ -698,7 +724,9 @@ export default function TransaksiCreate({
                                             ) : (
                                                 items.map((item, index) => {
                                                     const selectedPaket = currentPakets.find(p => p.id === parseInt(item.id_paket));
-                                                    const subtotal = selectedPaket ? parseFloat(item.qty) * parseFloat(selectedPaket.harga) : 0;
+                                                    // REVISI 4: Handle empty qty gracefully
+                                                    const qty = parseFloat(item.qty) || 0;
+                                                    const subtotal = selectedPaket ? qty * parseFloat(selectedPaket.harga) : 0;
 
                                                     return (
                                                         <div key={item.id} className="p-4 border rounded-lg space-y-3">
@@ -723,7 +751,6 @@ export default function TransaksiCreate({
                                                                             if (value === 'none') {
                                                                                 updateItem(item.id, 'id_paket', '');
                                                                             } else {
-                                                                                // ⬇️ PENTING: Konversi ke INTEGER
                                                                                 updateItem(item.id, 'id_paket', parseInt(value));
                                                                             }
                                                                         }}
@@ -776,7 +803,7 @@ export default function TransaksiCreate({
                                         </CardContent>
                                     </Card>
 
-                                    {/* Surcharges */}
+                                    {/* Surcharges (NOT including shipping) */}
                                     {surcharges.length > 0 && (
                                         <Card>
                                             <CardHeader>
@@ -834,6 +861,77 @@ export default function TransaksiCreate({
                                         </Card>
                                     )}
 
+                                    {/* REVISI 1: Shipping separated */}
+                                    {shippingOptions.length > 0 && (
+                                        <Card className="border-2 border-orange-200 dark:border-orange-900">
+                                            <CardHeader>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <Truck className="h-5 w-5 text-orange-600" />
+                                                    Ongkos Kirim
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="space-y-3">
+                                                <Select
+                                                    value={selectedShipping?.toString() || 'none'}
+                                                    onValueChange={(value) => {
+                                                        if (value === 'none') {
+                                                            setSelectedShipping(null);
+                                                            setShippingDistance(0);
+                                                        } else {
+                                                            setSelectedShipping(parseInt(value));
+                                                        }
+                                                    }}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Tidak ada ongkir" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="none">Tidak ada ongkir</SelectItem>
+                                                        {shippingOptions.map((shipping) => {
+                                                            const isFree = shipping.min_order_total && 
+                                                                calculation.subtotal_items >= shipping.min_order_total;
+                                                            
+                                                            return (
+                                                                <SelectItem key={shipping.id} value={shipping.id.toString()}>
+                                                                    {shipping.nama} - {shipping.formatted_nominal}
+                                                                    {isFree && ' (GRATIS)'}
+                                                                </SelectItem>
+                                                            );
+                                                        })}
+                                                    </SelectContent>
+                                                </Select>
+
+                                                {selectedShipping && (() => {
+                                                    const shipping = shippingOptions.find(s => s.id === selectedShipping);
+                                                    return shipping?.calculation_type === 'distance' && (
+                                                        <div>
+                                                            <Label>Jarak Pengiriman (km)</Label>
+                                                            <Input
+                                                                type="number"
+                                                                step="0.1"
+                                                                min="0"
+                                                                value={shippingDistance}
+                                                                onChange={(e) => setShippingDistance(parseFloat(e.target.value) || 0)}
+                                                                placeholder="Masukkan jarak dalam kilometer"
+                                                            />
+                                                        </div>
+                                                    );
+                                                })()}
+
+                                                {calculation.shipping_cost > 0 && (
+                                                    <div className="p-3 bg-orange-50 dark:bg-orange-900/10 rounded-lg">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-sm font-medium">Total Ongkir:</span>
+                                                            <span className="text-lg font-bold text-orange-600">
+                                                                {formatRupiah(calculation.shipping_cost)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
                                     {/* Promo & Points */}
                                     <Card>
                                         <CardHeader>
@@ -865,6 +963,9 @@ export default function TransaksiCreate({
                                                         ))}
                                                     </SelectContent>
                                                 </Select>
+                                                <p className="mt-1 text-xs text-gray-500">
+                                                    Diskon hanya berlaku untuk Item + Biaya Tambahan (tidak termasuk ongkir)
+                                                </p>
                                             </div>
 
                                             {selectedCustomer && selectedCustomer.is_member && selectedCustomer.poin > 0 && (
@@ -878,12 +979,24 @@ export default function TransaksiCreate({
                                                         <Input
                                                             type="number"
                                                             min="0"
-                                                            max={selectedCustomer.poin}
+                                                            max={calculation.max_redeemable_points}
                                                             value={redeemPoints}
-                                                            onChange={(e) => setRedeemPoints(parseInt(e.target.value) || 0)}
+                                                            onChange={(e) => {
+                                                                const value = parseInt(e.target.value) || 0;
+                                                                // REVISI 6: Auto-clamp
+                                                                const clamped = Math.min(value, calculation.max_redeemable_points);
+                                                                setRedeemPoints(clamped);
+                                                                if (value > clamped) {
+                                                                    toast.warning(`Poin otomatis disesuaikan menjadi ${clamped} (maksimal yang dapat ditukar)`);
+                                                                }
+                                                            }}
                                                         />
                                                         <p className="mt-1 text-xs text-gray-500">
-                                                            Nilai: {formatRupiah(redeemPoints * settings.points_redeem_value)}
+                                                            Maksimal: {calculation.max_redeemable_points} poin 
+                                                            ({formatRupiah(calculation.max_redeemable_points * settings.points_redeem_value)})
+                                                        </p>
+                                                        <p className="mt-1 text-xs text-amber-600">
+                                                            ⚠️ Poin tidak akan terbuang - sistem mencegah penukaran berlebih
                                                         </p>
                                                     </div>
                                                 </div>
@@ -891,27 +1004,7 @@ export default function TransaksiCreate({
                                         </CardContent>
                                     </Card>
 
-                                    {/* Status */}
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="flex items-center gap-2">
-                                                <Receipt className="h-5 w-5" />
-                                                Status
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <Select value={data.status} onValueChange={(value) => setData('status', value)}>
-                                                <SelectTrigger>
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="baru">Baru</SelectItem>
-                                                    <SelectItem value="proses">Proses</SelectItem>
-                                                    <SelectItem value="selesai">Selesai</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </CardContent>
-                                    </Card>
+                                    {/* STATUS SECTION DIHAPUS - Tidak diperlukan karena otomatis 'baru' */}
                                 </div>
 
                                 {/* RIGHT COLUMN - Summary */}
@@ -927,7 +1020,7 @@ export default function TransaksiCreate({
                                             <CardContent className="space-y-3 pt-6">
                                                 <div className="space-y-2">
                                                     <div className="flex justify-between text-sm">
-                                                        <span>Subtotal:</span>
+                                                        <span>Subtotal Items:</span>
                                                         <span className="font-medium">{formatRupiah(calculation.subtotal_items)}</span>
                                                     </div>
                                                     {calculation.total_surcharge > 0 && (
@@ -936,6 +1029,21 @@ export default function TransaksiCreate({
                                                             <span className="font-medium text-orange-600">+ {formatRupiah(calculation.total_surcharge)}</span>
                                                         </div>
                                                     )}
+                                                    
+                                                    {/* REVISI 1: Show shipping separately */}
+                                                    {calculation.shipping_cost > 0 && (
+                                                        <>
+                                                            <Separator />
+                                                            <div className="flex justify-between text-sm">
+                                                                <span className="flex items-center gap-1">
+                                                                    <Truck className="h-3 w-3" />
+                                                                    Ongkir:
+                                                                </span>
+                                                                <span className="font-medium text-orange-600">+ {formatRupiah(calculation.shipping_cost)}</span>
+                                                            </div>
+                                                        </>
+                                                    )}
+
                                                     {calculation.total_diskon > 0 && (
                                                         <>
                                                             <Separator />
@@ -953,6 +1061,7 @@ export default function TransaksiCreate({
                                                             )}
                                                         </>
                                                     )}
+
                                                     {settings.auto_apply_tax && (
                                                         <>
                                                             <Separator />
@@ -973,6 +1082,7 @@ export default function TransaksiCreate({
                                                     </span>
                                                 </div>
 
+                                                {/* REVISI 3: Show points earned from gross total */}
                                                 {calculation.earned_points > 0 && (
                                                     <div className="flex items-center justify-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-lg border border-amber-200">
                                                         <TrendingUp className="h-4 w-4 text-amber-600" />
@@ -981,6 +1091,10 @@ export default function TransaksiCreate({
                                                         </p>
                                                     </div>
                                                 )}
+
+                                                <p className="text-xs text-center text-gray-500">
+                                                    Poin dihitung dari {formatRupiah(calculation.gross_total_for_points)} (sebelum diskon, tanpa ongkir)
+                                                </p>
 
                                                 <Separator />
 
@@ -1001,7 +1115,7 @@ export default function TransaksiCreate({
                                                         variant="outline"
                                                         className="w-full"
                                                     >
-                                                        <Receipt className="mr-2 h-4 w-4" />
+                                                        <Calendar className="mr-2 h-4 w-4" />
                                                         Simpan & Bayar Nanti
                                                     </Button>
                                                     <Button
@@ -1035,7 +1149,7 @@ export default function TransaksiCreate({
                             <div>
                                 <Label>Nama *</Label>
                                 <Input
-                                                                    value={quickAddForm.data.nama}
+                                    value={quickAddForm.data.nama}
                                     onChange={(e) => quickAddForm.setData('nama', e.target.value)}
                                 />
                             </div>

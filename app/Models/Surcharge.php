@@ -14,10 +14,15 @@ class Surcharge extends Model
     public const TYPE_PERCENT = 'percent';
     public const TYPE_DISTANCE = 'distance';
 
+    // Constants untuk Category
+    public const CATEGORY_SURCHARGE = 'surcharge';
+    public const CATEGORY_SHIPPING = 'shipping';
+
     protected $fillable = [
         'nama',
         'nominal',
         'calculation_type',
+        'category',
         'min_order_total',
         'keterangan',
         'is_active',
@@ -38,6 +43,22 @@ class Surcharge extends Model
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
+    }
+
+    /**
+     * Scope untuk filter by category
+     */
+    public function scopeSurchargesOnly($query)
+    {
+        return $query->where('category', self::CATEGORY_SURCHARGE);
+    }
+
+    /**
+     * Scope untuk filter shipping only
+     */
+    public function scopeShippingOnly($query)
+    {
+        return $query->where('category', self::CATEGORY_SHIPPING);
     }
 
     /**
@@ -107,5 +128,13 @@ class Surcharge extends Model
     public function hasFreeShipping(): bool
     {
         return $this->min_order_total !== null && $this->min_order_total > 0;
+    }
+
+    /**
+     * Check if is shipping type
+     */
+    public function isShipping(): bool
+    {
+        return $this->category === self::CATEGORY_SHIPPING;
     }
 }

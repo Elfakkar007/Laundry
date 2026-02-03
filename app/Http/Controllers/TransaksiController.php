@@ -91,7 +91,7 @@ class TransaksiController extends Controller
 
     /**
      * Show the form for creating a new transaction
-     * FIXED: Better outlet selection handling for admin
+     * UPDATED: Separate shipping from surcharges
      */
     public function create(Request $request): Response
     {
@@ -101,40 +101,43 @@ class TransaksiController extends Controller
         
         // Determine selected outlet
         if ($user->id_outlet !== null) {
-            // Kasir: force their outlet
             $selectedOutletId = $user->id_outlet;
         } else {
-            // Admin: use query param or default to first outlet
             $selectedOutletId = $request->input('outlet_id');
             
             if (!$selectedOutletId) {
-                // Default to first outlet if none selected
                 $firstOutlet = Outlet::orderBy('nama')->first();
                 $selectedOutletId = $firstOutlet ? $firstOutlet->id : null;
             }
         }
 
-        // Get outlets for admin (for outlet switcher)
+        // Get outlets for admin
         $outlets = $user->id_outlet === null 
             ? Outlet::select('id', 'nama')->orderBy('nama')->get()
             : null;
 
-        // Get customers (global, not scoped)
+        // Get customers
         $customers = Customer::select('id', 'nama', 'no_hp', 'is_member', 'poin')
             ->orderBy('nama')
             ->get();
 
-        // ✅ PERBAIKAN: Get pakets for selected outlet - HANYA YANG AKTIF
+        // Get active pakets for selected outlet
         $pakets = $selectedOutletId
             ? Paket::where('id_outlet', $selectedOutletId)
-                ->where('is_active', true) // ✅ FILTER HANYA PAKET AKTIF
+                ->where('is_active', true)
                 ->with('packageType')
                 ->orderBy('nama_paket')
                 ->get()
             : collect();
 
-        // Get active surcharges
+        // REVISI 1: Separate surcharges and shipping
         $surcharges = Surcharge::where('is_active', true)
+            ->surchargesOnly()
+            ->orderBy('nama')
+            ->get();
+
+        $shippingOptions = Surcharge::where('is_active', true)
+            ->shippingOnly()
             ->orderBy('nama')
             ->get();
 
@@ -153,7 +156,7 @@ class TransaksiController extends Controller
             'points_redeem_value' => (float) Setting::getValue('points_redeem_value', 500),
         ];
 
-        // Generate invoice code only if outlet is selected
+        // Generate invoice code
         $invoiceCode = $selectedOutletId ? $this->generateInvoiceCode($selectedOutletId) : null;
 
         return Inertia::render('Transaksi/Create', [
@@ -161,6 +164,7 @@ class TransaksiController extends Controller
             'customers' => $customers,
             'pakets' => $pakets,
             'surcharges' => $surcharges,
+            'shippingOptions' => $shippingOptions,
             'promos' => $promos,
             'settings' => $settings,
             'invoiceCode' => $invoiceCode,
@@ -178,14 +182,12 @@ class TransaksiController extends Controller
     {
         $this->authorizePermission('transaksi.create');
 
-        // Only admin can switch outlets
         if ($request->user()->id_outlet !== null) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
-        // ✅ PERBAIKAN: Get pakets - HANYA YANG AKTIF
         $pakets = Paket::where('id_outlet', $outletId)
-            ->where('is_active', true) // ✅ FILTER HANYA PAKET AKTIF
+            ->where('is_active', true)
             ->with('packageType')
             ->orderBy('nama_paket')
             ->get();
@@ -200,15 +202,15 @@ class TransaksiController extends Controller
 
     /**
      * Store a newly created transaction
-     * FIXED: Better validation and error handling
+     * UPDATED: New calculation logic with 6 revisions
      */
     public function store(Request $request): RedirectResponse
     {
         $this->authorizePermission('transaksi.create');
 
-        // Log untuk debugging
         Log::info('Transaksi Store Request', ['data' => $request->all()]);
 
+        // REVISI 5: Enhanced validation
         $validated = $request->validate([
             'id_outlet' => 'required|exists:outlets,id',
             'id_customer' => 'required|exists:customers,id',
@@ -216,30 +218,24 @@ class TransaksiController extends Controller
             'batas_waktu' => 'required|date|after:tgl',
             'items' => 'required|array|min:1',
             'items.*.id_paket' => 'required|exists:pakets,id',
-            'items.*.qty' => 'required|numeric|min:0.01',
+            'items.*.qty' => 'required|numeric|min:0.01', // Tidak boleh 0
             'items.*.keterangan' => 'nullable|string|max:500',
             'surcharges' => 'nullable|array',
             'surcharges.*' => 'exists:surcharges,id',
             'surcharge_distances' => 'nullable|array',
+            'shipping_id' => 'nullable|exists:surcharges,id',
+            'shipping_distance' => 'nullable|numeric|min:0',
             'id_promo' => 'nullable|exists:promos,id',
             'redeem_points' => 'nullable|integer|min:0',
-            'status' => 'required|in:baru,proses,selesai,diambil',
+            // status tidak perlu validasi - akan hardcoded ke 'baru'
             'payment_action' => 'required|in:bayar_nanti,bayar_lunas',
             'jumlah_bayar' => 'required_if:payment_action,bayar_lunas|nullable|numeric|min:0',
         ], [
             'id_outlet.required' => 'Outlet wajib dipilih',
             'id_customer.required' => 'Customer wajib dipilih',
-            'tgl.required' => 'Tanggal wajib diisi',
-            'batas_waktu.required' => 'Batas waktu wajib diisi',
-            'batas_waktu.after' => 'Batas waktu harus setelah tanggal transaksi',
             'items.required' => 'Minimal 1 item paket wajib ditambahkan',
-            'items.min' => 'Minimal 1 item paket wajib ditambahkan',
+            'items.*.qty.min' => 'Quantity tidak boleh 0 atau kurang',
             'items.*.id_paket.required' => 'Paket wajib dipilih',
-            'items.*.qty.required' => 'Qty wajib diisi',
-            'items.*.qty.min' => 'Qty minimal 0.01',
-            'status.required' => 'Status wajib dipilih',
-            'payment_action.required' => 'Pilih metode pembayaran',
-            'jumlah_bayar.required_if' => 'Jumlah bayar wajib diisi untuk pembayaran lunas',
         ]);
 
         // Validation: Kasir cannot create for other outlets
@@ -247,16 +243,28 @@ class TransaksiController extends Controller
             return redirect()->back()->withErrors(['id_outlet' => 'Tidak dapat membuat transaksi untuk outlet lain!'])->withInput();
         }
 
+        // REVISI 5: Validate no zero price packages
+        foreach ($validated['items'] as $item) {
+            $paket = Paket::find($item['id_paket']);
+            if (!$paket || $paket->harga <= 0) {
+                return redirect()->back()->withErrors([
+                    'items' => 'Paket dengan harga Rp0 tidak dapat digunakan dalam transaksi!'
+                ])->withInput();
+            }
+        }
+
         try {
             DB::beginTransaction();
 
             $customer = Customer::findOrFail($validated['id_customer']);
 
-            // Calculate totals
+            // Calculate totals with NEW LOGIC
             $calculation = $this->calculateTransactionTotal(
                 $validated['items'],
                 $validated['surcharges'] ?? [],
                 $validated['surcharge_distances'] ?? [],
+                $validated['shipping_id'] ?? null,
+                $validated['shipping_distance'] ?? 0,
                 $validated['id_promo'] ?? null,
                 $validated['redeem_points'] ?? 0,
                 $customer
@@ -264,10 +272,21 @@ class TransaksiController extends Controller
 
             Log::info('Transaction Calculation', $calculation);
 
-            // Validate redeem points
-            if (($validated['redeem_points'] ?? 0) > 0 && $customer->poin < $validated['redeem_points']) {
-                DB::rollBack();
-                return redirect()->back()->withErrors(['redeem_points' => 'Poin pelanggan tidak mencukupi!'])->withInput();
+            // REVISI 6: Validate redeem points with clamping
+            if (($validated['redeem_points'] ?? 0) > 0) {
+                $maxRedeemablePoints = $calculation['max_redeemable_points'];
+                if ($validated['redeem_points'] > $maxRedeemablePoints) {
+                    DB::rollBack();
+                    $maxValue = formatRupiah($maxRedeemablePoints * Setting::getValue('points_redeem_value', 500));
+                    return redirect()->back()->withErrors([
+                        'redeem_points' => "Poin yang dapat ditukar maksimal {$maxRedeemablePoints} poin (senilai {$maxValue}). Sisanya akan terbuang!"
+                    ])->withInput();
+                }
+
+                if ($customer->poin < $validated['redeem_points']) {
+                    DB::rollBack();
+                    return redirect()->back()->withErrors(['redeem_points' => 'Poin pelanggan tidak mencukupi!'])->withInput();
+                }
             }
 
             // Validate payment amount if bayar_lunas
@@ -286,10 +305,10 @@ class TransaksiController extends Controller
                 'tgl' => $validated['tgl'],
                 'batas_waktu' => $validated['batas_waktu'],
                 'tgl_bayar' => $validated['payment_action'] === 'bayar_lunas' ? now() : null,
-                'biaya_tambahan' => $calculation['total_surcharge'],
+                'biaya_tambahan' => $calculation['total_surcharge'] + $calculation['shipping_cost'],
                 'diskon' => $calculation['total_diskon'],
                 'pajak' => $calculation['pajak_rate'],
-                'status' => $validated['status'],
+                'status' => 'baru', // Hardcoded untuk transaksi baru
                 'dibayar' => $validated['payment_action'] === 'bayar_lunas' ? Transaksi::DIBAYAR_LUNAS : Transaksi::DIBAYAR_BELUM,
                 'id_user' => $request->user()->id,
             ]);
@@ -317,18 +336,18 @@ class TransaksiController extends Controller
                 Log::info('Points Redeemed', ['points' => $validated['redeem_points']]);
             }
 
-            // Handle points earning (only if paid)
+            // REVISI 3: Handle points earning dari GROSS TOTAL (sebelum diskon)
             if ($validated['payment_action'] === 'bayar_lunas' && $customer->is_member) {
-                $earnedPoints = Customer::calculatePointsFromAmount($calculation['total_akhir']);
+                $earnedPoints = Customer::calculatePointsFromAmount($calculation['gross_total_for_points']);
                 if ($earnedPoints > 0) {
                     $customer->addPoints($earnedPoints, 'earn', [
-                        'transaction_amount' => $calculation['total_akhir'],
+                        'transaction_amount' => $calculation['gross_total_for_points'],
                         'reference_type' => 'App\Models\Transaksi',
                         'reference_id' => $transaksi->id,
                         'notes' => "Belanja transaksi {$transaksi->kode_invoice}",
                         'created_by' => $request->user()->id,
                     ]);
-                    Log::info('Points Earned', ['points' => $earnedPoints]);
+                    Log::info('Points Earned', ['points' => $earnedPoints, 'from_gross' => $calculation['gross_total_for_points']]);
                 }
             }
 
@@ -359,7 +378,7 @@ class TransaksiController extends Controller
     {
         $this->authorizePermission('transaksi.detail');
 
-        // Authorization: User can only view transactions from their outlet
+        // Authorization
         if (auth()->user()->id_outlet !== null && $transaksi->id_outlet !== auth()->user()->id_outlet) {
             abort(403, 'Unauthorized action.');
         }
@@ -371,7 +390,6 @@ class TransaksiController extends Controller
             'detailTransaksis.paket.packageType'
         ]);
 
-        // Append calculated total
         $transaksi->total_akhir = $transaksi->total_akhir;
         $transaksi->total_sebelum_diskon = $transaksi->total_sebelum_diskon;
 
@@ -387,7 +405,6 @@ class TransaksiController extends Controller
     {
         $this->authorizePermission('transaksi.create');
 
-        // Authorization: User can only update transactions from their outlet
         if ($request->user()->id_outlet !== null && $transaksi->id_outlet !== $request->user()->id_outlet) {
             abort(403, 'Unauthorized action.');
         }
@@ -409,17 +426,16 @@ class TransaksiController extends Controller
 
     /**
      * Process payment for unpaid transaction
+     * UPDATED: Points calculation from gross
      */
     public function processPayment(Request $request, Transaksi $transaksi): RedirectResponse
     {
         $this->authorizePermission('transaksi.create');
 
-        // Authorization
         if ($request->user()->id_outlet !== null && $transaksi->id_outlet !== $request->user()->id_outlet) {
             abort(403, 'Unauthorized action.');
         }
 
-        // Validate not already paid
         if ($transaksi->dibayar === Transaksi::DIBAYAR_LUNAS) {
             return redirect()->back()->with('error', 'Transaksi sudah dibayar!');
         }
@@ -442,12 +458,13 @@ class TransaksiController extends Controller
                 'tgl_bayar' => now(),
             ]);
 
-            // Award points if customer is member
+            // REVISI 3: Award points from GROSS TOTAL (before discount)
             if ($transaksi->customer->is_member) {
-                $earnedPoints = Customer::calculatePointsFromAmount($totalAkhir);
+                $grossTotal = $transaksi->total_sebelum_diskon; // Sudah termasuk surcharge + shipping
+                $earnedPoints = Customer::calculatePointsFromAmount($grossTotal);
                 if ($earnedPoints > 0) {
                     $transaksi->customer->addPoints($earnedPoints, 'earn', [
-                        'transaction_amount' => $totalAkhir,
+                        'transaction_amount' => $grossTotal,
                         'reference_type' => 'App\Models\Transaksi',
                         'reference_id' => $transaksi->id,
                         'notes' => "Pembayaran transaksi {$transaksi->kode_invoice}",
@@ -466,18 +483,16 @@ class TransaksiController extends Controller
     }
 
     /**
-     * Remove the specified transaction (only if baru & belum dibayar)
+     * Remove the specified transaction
      */
     public function destroy(Transaksi $transaksi): RedirectResponse
     {
         $this->authorizePermission('transaksi.create');
 
-        // Authorization
         if (auth()->user()->id_outlet !== null && $transaksi->id_outlet !== auth()->user()->id_outlet) {
             abort(403, 'Unauthorized action.');
         }
 
-        // Business logic: Can only delete if baru & belum dibayar
         if ($transaksi->status !== 'baru' || $transaksi->dibayar === Transaksi::DIBAYAR_LUNAS) {
             return redirect()->back()->with('error', 'Hanya transaksi baru yang belum dibayar yang dapat dihapus!');
         }
@@ -485,7 +500,7 @@ class TransaksiController extends Controller
         try {
             DB::beginTransaction();
 
-            // Restore redeemed points if any
+            // Restore redeemed points
             $pointHistory = $transaksi->customer->pointHistories()
                 ->where('reference_type', 'App\Models\Transaksi')
                 ->where('reference_id', $transaksi->id)
@@ -515,7 +530,6 @@ class TransaksiController extends Controller
         $today = now()->format('Ymd');
         $prefix = "INV-{$today}";
 
-        // Get last invoice of today for this outlet
         $lastInvoice = Transaksi::where('id_outlet', $outletId)
             ->where('kode_invoice', 'like', "{$prefix}%")
             ->orderBy('kode_invoice', 'desc')
@@ -532,12 +546,19 @@ class TransaksiController extends Controller
     }
 
     /**
-     * Calculate transaction total with all discounts and charges
+     * Calculate transaction total with NEW LOGIC (6 Revisions Applied)
+     * 
+     * REVISI 1: Ongkir separated from surcharges
+     * REVISI 2: Discount scope does NOT include shipping
+     * REVISI 3: Points earned from GROSS TOTAL (before discount, excluding shipping)
+     * REVISI 6: Anti-boncos points redemption with clamping
      */
     private function calculateTransactionTotal(
         array $items,
         array $surchargeIds,
         array $surchargeDistances,
+        ?int $shippingId,
+        float $shippingDistance,
         ?int $promoId,
         int $redeemPoints,
         Customer $customer
@@ -550,55 +571,90 @@ class TransaksiController extends Controller
             $subtotalItems += floatval($item['qty']) * floatval($paket->harga);
         }
 
-        // Step 2: Calculate surcharges
+        // Step 2: Calculate surcharges (NOT including shipping)
         $totalSurcharge = 0;
         foreach ($surchargeIds as $surchargeId) {
             $surcharge = Surcharge::find($surchargeId);
-            if (!$surcharge) continue;
+            if (!$surcharge || $surcharge->isShipping()) continue;
 
             $distance = $surchargeDistances[$surchargeId] ?? 0;
             $totalSurcharge += $surcharge->calculateAmount($subtotalItems, $distance);
         }
 
-        $totalDenganSurcharge = $subtotalItems + $totalSurcharge;
+        // REVISI 1: Calculate shipping separately
+        $shippingCost = 0;
+        if ($shippingId) {
+            $shipping = Surcharge::find($shippingId);
+            if ($shipping && $shipping->isShipping()) {
+                $shippingCost = $shipping->calculateAmount($subtotalItems, $shippingDistance);
+            }
+        }
 
-        // Step 3: Calculate discounts
+        // REVISI 2: Base for discount = Items + Surcharges ONLY (exclude shipping)
+        $baseForDiscount = $subtotalItems + $totalSurcharge;
+
+        // REVISI 3: Gross total for points = Items + Surcharges ONLY (exclude shipping)
+        $grossTotalForPoints = $baseForDiscount;
+
+        // Step 3: Calculate discounts (applied to baseForDiscount ONLY)
         $diskonPromo = 0;
         if ($promoId) {
             $promo = Promo::find($promoId);
             if ($promo && $promo->canBeUsedBy($customer)) {
-                $diskonPromo = $promo->calculateDiscount($totalDenganSurcharge);
+                $diskonPromo = $promo->calculateDiscount($baseForDiscount);
             }
         }
 
-        $diskonPoin = 0;
-        if ($redeemPoints > 0) {
-            $diskonPoin = Customer::calculatePointsValue($redeemPoints);
-        }
+        // REVISI 6: Anti-boncos points redemption with clamping
+        $pointsRedeemValue = (float) Setting::getValue('points_redeem_value', 500);
+        $customerAvailablePoints = $customer->poin;
+        
+        // Maximum points that can be redeemed = min(customer's points, remaining bill value)
+        $remainingBillAfterPromo = max(0, $baseForDiscount - $diskonPromo);
+        $maxRedeemablePointsByBill = floor($remainingBillAfterPromo / $pointsRedeemValue);
+        $maxRedeemablePoints = min($customerAvailablePoints, $maxRedeemablePointsByBill);
+
+        // Clamp actual redeemPoints to maxRedeemablePoints
+        $actualRedeemPoints = min($redeemPoints, $maxRedeemablePoints);
+        $diskonPoin = $actualRedeemPoints * $pointsRedeemValue;
 
         $totalDiskon = $diskonPromo + $diskonPoin;
-        $totalSetelahDiskon = max(0, $totalDenganSurcharge - $totalDiskon);
+        $totalSetelahDiskon = max(0, $baseForDiscount - $totalDiskon);
 
-        // Step 4: Calculate tax
+        // Step 4: Add shipping AFTER discount applied
+        $totalDenganShipping = $totalSetelahDiskon + $shippingCost;
+
+        // Step 5: Calculate tax on (discounted subtotal + shipping)
         $taxRate = (float) Setting::getValue('tax_rate', 11);
         $autoApplyTax = Setting::getValue('auto_apply_tax', true);
         
-        $pajakAmount = $autoApplyTax ? ($totalSetelahDiskon * $taxRate / 100) : 0;
+        $pajakAmount = $autoApplyTax ? ($totalDenganShipping * $taxRate / 100) : 0;
 
-        // Step 5: Total akhir
-        $totalAkhir = $totalSetelahDiskon + $pajakAmount;
+        // Step 6: Total akhir
+        $totalAkhir = $totalDenganShipping + $pajakAmount;
+
+        // REVISI 3: Points earned from gross total (before discount, excluding shipping)
+        $earnedPoints = 0;
+        if ($customer->is_member && Setting::getValue('points_enabled', true)) {
+            $earnedPoints = Customer::calculatePointsFromAmount($grossTotalForPoints);
+        }
 
         return [
             'subtotal_items' => $subtotalItems,
             'total_surcharge' => $totalSurcharge,
-            'total_dengan_surcharge' => $totalDenganSurcharge,
+            'shipping_cost' => $shippingCost,
+            'base_for_discount' => $baseForDiscount,
+            'gross_total_for_points' => $grossTotalForPoints,
             'diskon_promo' => $diskonPromo,
             'diskon_poin' => $diskonPoin,
             'total_diskon' => $totalDiskon,
             'total_setelah_diskon' => $totalSetelahDiskon,
+            'total_dengan_shipping' => $totalDenganShipping,
             'pajak_rate' => $taxRate,
             'pajak_amount' => $pajakAmount,
             'total_akhir' => $totalAkhir,
+            'earned_points' => $earnedPoints,
+            'max_redeemable_points' => $maxRedeemablePoints,
         ];
     }
 }
