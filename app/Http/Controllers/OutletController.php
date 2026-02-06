@@ -46,11 +46,13 @@ class OutletController extends Controller
             'nama' => 'required|string|max:255',
             'alamat' => 'required|string',
             'tlp' => 'required|string|max:20',
+            'latitude' => 'nullable|numeric|between:-90,90',      
+            'longitude' => 'nullable|numeric|between:-180,180',   
+            'price_per_km' => 'nullable|integer|min:0',
         ]);
 
-        try {
+            try {
             Outlet::create($validated);
-
             return redirect()->back()->with('success', 'Outlet berhasil ditambahkan!');
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Gagal menambahkan outlet: ' . $e->getMessage());
@@ -68,11 +70,13 @@ class OutletController extends Controller
             'nama' => 'required|string|max:255',
             'alamat' => 'required|string',
             'tlp' => 'required|string|max:20',
+            'latitude' => 'nullable|numeric|between:-90,90',      
+            'longitude' => 'nullable|numeric|between:-180,180',   
+            'price_per_km' => 'nullable|integer|min:0',           
         ]);
 
         try {
             $outlet->update($validated);
-
             return redirect()->back()->with('success', 'Outlet berhasil diupdate!');
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Gagal mengupdate outlet: ' . $e->getMessage());

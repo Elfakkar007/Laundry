@@ -1,6 +1,9 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, router } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
+import LocationPicker from '@/Components/LocationPicker';
+import { Textarea } from '@/Components/ui/textarea';
+import { Separator } from '@/Components/ui/separator';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
@@ -31,7 +34,11 @@ export default function OutletsIndex({ outlets, filters, flash }) {
         nama: '',
         alamat: '',
         tlp: '',
+        latitude: null,
+        longitude: null,
+        price_per_km: 0,
     });
+    const [isFetchingAddress, setIsFetchingAddress] = useState(false);
 
     // Show flash messages
     useEffect(() => {
@@ -55,6 +62,9 @@ export default function OutletsIndex({ outlets, filters, flash }) {
             nama: outlet.nama,
             alamat: outlet.alamat,
             tlp: outlet.tlp,
+            latitude: outlet.latitude,
+            longitude: outlet.longitude,
+            price_per_km: outlet.price_per_km || 0,
         });
         setIsDialogOpen(true);
     };
@@ -91,6 +101,38 @@ export default function OutletsIndex({ outlets, filters, flash }) {
             preserveState: true,
             replace: true,
         });
+    };
+    const handleLocationChange = async (location) => {
+        // 1. Set koordinat dulu agar marker pindah instan
+        setData(data => ({
+            ...data,
+            latitude: location.lat,
+            longitude: location.lng
+        }));
+
+        // 2. Ambil alamat teks dari OpenStreetMap (Reverse Geocoding)
+        setIsFetchingAddress(true);
+        try {
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}&accept-language=id`
+            );
+            const result = await response.json();
+
+            if (result && result.display_name) {
+                // Masukkan hasil alamat otomatis ke form data 'alamat'
+                setData(prevData => ({
+                    ...prevData,
+                    latitude: location.lat,
+                    longitude: location.lng,
+                    alamat: result.display_name // <-- INI KUNCINYA
+                }));
+            }
+        } catch (error) {
+            console.error("Gagal mengambil alamat:", error);
+            toast.error("Gagal mendeteksi nama alamat otomatis.");
+        } finally {
+            setIsFetchingAddress(false);
+        }
     };
 
     return (
@@ -200,8 +242,8 @@ export default function OutletsIndex({ outlets, filters, flash }) {
             </div>
 
             {/* Dialog Form */}
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>
                             {editingOutlet ? 'Edit Outlet' : 'Tambah Outlet Baru'}
@@ -209,53 +251,129 @@ export default function OutletsIndex({ outlets, filters, flash }) {
                     </DialogHeader>
                     
                     <form onSubmit={handleSubmit}>
-                        <div className="space-y-4">
-                            <div>
-                                <Label htmlFor="nama">Nama Outlet *</Label>
-                                <Input
-                                    id="nama"
-                                    value={data.nama}
-                                    onChange={(e) => setData('nama', e.target.value)}
-                                    className={errors.nama ? 'border-red-500' : ''}
-                                />
-                                {errors.nama && (
-                                    <p className="mt-1 text-sm text-red-500">{errors.nama}</p>
-                                )}
+                        <div className="grid gap-6 md:grid-cols-2">
+                            
+                            {/* KOLOM KIRI: Info Dasar (Tanpa Input Alamat Manual) */}
+                            <div className="space-y-4">
+                                <div>
+                                    <Label htmlFor="nama">Nama Outlet *</Label>
+                                    <Input
+                                        id="nama"
+                                        value={data.nama}
+                                        onChange={(e) => setData('nama', e.target.value)}
+                                        className={errors.nama ? 'border-red-500' : ''}
+                                        placeholder="Contoh: Laundry Cabang Pusat"
+                                    />
+                                    {errors.nama && (
+                                        <p className="mt-1 text-sm text-red-500">{errors.nama}</p>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="tlp">Telepon *</Label>
+                                    <Input
+                                        id="tlp"
+                                        value={data.tlp}
+                                        onChange={(e) => setData('tlp', e.target.value)}
+                                        className={errors.tlp ? 'border-red-500' : ''}
+                                        placeholder="0812..."
+                                    />
+                                    {errors.tlp && (
+                                        <p className="mt-1 text-sm text-red-500">{errors.tlp}</p>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="price_per_km">Harga per KM (Rp)</Label>
+                                    <Input
+                                        id="price_per_km"
+                                        type="number"
+                                        min="0"
+                                        value={data.price_per_km || 0}
+                                        onChange={(e) => setData('price_per_km', e.target.value)}
+                                    />
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        Biaya ongkir per km dari titik outlet ini.
+                                    </p>
+                                </div>
                             </div>
 
-                            <div>
-                                <Label htmlFor="alamat">Alamat *</Label>
-                                <Input
-                                    id="alamat"
-                                    value={data.alamat}
-                                    onChange={(e) => setData('alamat', e.target.value)}
-                                    className={errors.alamat ? 'border-red-500' : ''}
-                                />
-                                {errors.alamat && (
-                                    <p className="mt-1 text-sm text-red-500">{errors.alamat}</p>
-                                )}
-                            </div>
+                            {/* KOLOM KANAN: Peta & Alamat Otomatis */}
+                            <div className="space-y-4">
+                                <div>
+                                    <Label className="text-base font-semibold mb-2 block">
+                                        Lokasi Outlet
+                                    </Label>
+                                    
+                                    {/* Map Component */}
+                                    <div className="rounded-md border overflow-hidden relative">
+                                        <LocationPicker
+                                            initialLat={data.latitude || -6.2088}
+                                            initialLng={data.longitude || 106.8456}
+                                            // Panggil fungsi custom kita
+                                            onLocationChange={handleLocationChange} 
+                                            height="250px"
+                                        />
+                                        
+                                        {/* Loading Overlay saat geser pin */}
+                                        {isFetchingAddress && (
+                                            <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-[1000]">
+                                                <span className="text-sm font-medium text-gray-800 bg-white px-3 py-1 rounded shadow">
+                                                    Mencari alamat...
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-2 mb-2">
+                                        Geser pin pada peta, alamat akan terisi otomatis.
+                                    </p>
+                                </div>
 
-                            <div>
-                                <Label htmlFor="tlp">Telepon *</Label>
-                                <Input
-                                    id="tlp"
-                                    value={data.tlp}
-                                    onChange={(e) => setData('tlp', e.target.value)}
-                                    className={errors.tlp ? 'border-red-500' : ''}
-                                />
-                                {errors.tlp && (
-                                    <p className="mt-1 text-sm text-red-500">{errors.tlp}</p>
-                                )}
+                                {/* ALAMAT TERDETEKSI (Menggantikan Input Manual) */}
+                                <div>
+                                    <Label htmlFor="alamat_auto" className="flex justify-between">
+                                        <span>Alamat Terdeteksi</span>
+                                        <span className="text-xs font-normal text-gray-500">(Otomatis dari Peta)</span>
+                                    </Label>
+                                    
+                                    {/* Gunakan Textarea agar muat alamat panjang */}
+                                    {/* Saya sarankan tetap bisa diedit (readOnly={false}) kalau user mau tambah 'Lantai 2', dll */}
+                                    <textarea
+                                        id="alamat_auto"
+                                        value={data.alamat || ''}
+                                        onChange={(e) => setData('alamat', e.target.value)}
+                                        className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-h-[80px] ${errors.alamat ? 'border-red-500' : ''}`}
+                                        placeholder="Pilih lokasi di peta untuk mengisi alamat otomatis..."
+                                    />
+                                    {errors.alamat && (
+                                        <p className="mt-1 text-sm text-red-500">{errors.alamat}</p>
+                                    )}
+                                </div>
+
+                                {/* Koordinat (Hidden/Readonly kecil) */}
+                                <div className="grid grid-cols-2 gap-4 opacity-70">
+                                    <div>
+                                        <Label className="text-[10px] text-gray-400">Latitude</Label>
+                                        <div className="text-xs font-mono bg-gray-50 p-1 rounded border">
+                                            {data.latitude || '-'}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <Label className="text-[10px] text-gray-400">Longitude</Label>
+                                        <div className="text-xs font-mono bg-gray-50 p-1 rounded border">
+                                            {data.longitude || '-'}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <DialogFooter className="mt-6">
+                        <DialogFooter className="mt-8 pt-4 border-t">
                             <Button type="button" variant="outline" onClick={closeDialog}>
                                 Batal
                             </Button>
-                            <Button type="submit" disabled={processing}>
-                                {processing ? 'Menyimpan...' : 'Simpan'}
+                            <Button type="submit" disabled={processing || isFetchingAddress}>
+                                {processing ? 'Menyimpan...' : 'Simpan Outlet'}
                             </Button>
                         </DialogFooter>
                     </form>

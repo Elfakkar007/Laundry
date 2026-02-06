@@ -14,7 +14,24 @@ class Outlet extends Model
         'nama',
         'alamat',
         'tlp',
+        'latitude',      
+        'longitude',     
+        'price_per_km', 
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'latitude' => 'decimal:8',
+            'longitude' => 'decimal:8',
+            'price_per_km' => 'integer',
+        ];
+    }
+
+    public function hasLocation(): bool
+    {
+        return !is_null($this->latitude) && !is_null($this->longitude);
+    }
 
     /**
      * Relasi ke Users
