@@ -30,7 +30,7 @@ class Transaksi extends Model
         'tgl_bayar',
         'biaya_tambahan',
         'diskon',
-        'diskon_detail', // NEW: JSON detail multiple promo
+        'diskon_detail',
         'pajak',
         'status',
         'dibayar',
@@ -45,7 +45,7 @@ class Transaksi extends Model
             'tgl_bayar' => 'datetime',
             'biaya_tambahan' => 'decimal:2',
             'diskon' => 'decimal:2',
-            'diskon_detail' => 'array', // NEW: Cast to array
+            'diskon_detail' => 'array',
             'pajak' => 'decimal:2',
         ];
     }
@@ -108,23 +108,49 @@ class Transaksi extends Model
 
     /**
      * Accessor untuk total sebelum diskon
+     * CATATAN: biaya_tambahan di database sudah INCLUDE shipping cost
+     * karena di TransaksiController->store(), kita set:
+     * 'biaya_tambahan' => $calculation['total_surcharge'] + $calculation['shipping_cost']
      */
     public function getTotalSebelumDiskonAttribute(): float
     {
         $subtotal = $this->detailTransaksis->sum(function ($detail) {
             return $detail->qty * $detail->paket->harga;
         });
+        
+        // biaya_tambahan sudah include surcharge + shipping
         return $subtotal + $this->biaya_tambahan;
     }
 
     /**
      * Accessor untuk total akhir.
-     * Pajak di DB disimpan sebagai nominal (rupiah), bukan persentase.
+     * FIXED: Pajak harus ditambahkan SETELAH semua komponen (termasuk shipping)
+     * 
+     * Flow perhitungan:
+     * 1. Subtotal items
+     * 2. + Biaya tambahan (surcharge + shipping)
+     * 3. - Diskon
+     * 4. + Pajak (dari hasil step 3)
+     * = Total Akhir
      */
     public function getTotalAkhirAttribute(): float
     {
-        $totalSetelahDiskon = $this->total_sebelum_diskon - $this->diskon;
-        return $totalSetelahDiskon + (float) $this->pajak;
+        // Subtotal items dari detail transaksi
+        $subtotal = $this->detailTransaksis->sum(function ($detail) {
+            return $detail->qty * $detail->paket->harga;
+        });
+        
+        // Base = subtotal + biaya_tambahan (yang sudah include surcharge + shipping)
+        $base = $subtotal + (float) $this->biaya_tambahan;
+        
+        // Setelah diskon
+        $afterDiscount = $base - (float) $this->diskon;
+        
+        // Total akhir = after discount + pajak
+        // Pajak di DB sudah dalam bentuk nominal (bukan persen), hasil perhitungan di controller
+        $totalAkhir = $afterDiscount + (float) $this->pajak;
+        
+        return $totalAkhir;
     }
 
     /**

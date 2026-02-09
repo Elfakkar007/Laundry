@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 
 class CustomerController extends Controller
 {
@@ -99,6 +100,42 @@ class CustomerController extends Controller
             return redirect()->back()->with('success', 'Pelanggan berhasil diupdate!');
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Gagal mengupdate pelanggan: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Update only address and coordinates (for transaction page "Konfirmasi Lokasi").
+     * Returns JSON so the transaction page can stay mounted and update local state.
+     */
+    public function updateAddress(Request $request, Customer $customer): JsonResponse
+    {
+        $this->authorizePermission('customer.update');
+
+        $validated = $request->validate([
+            'alamat' => 'required|string',
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+        ], [
+            'alamat.required' => 'Alamat wajib diisi',
+        ]);
+
+        try {
+            $customer->update([
+                'alamat' => $validated['alamat'],
+                'latitude' => $validated['latitude'],
+                'longitude' => $validated['longitude'],
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Alamat berhasil disimpan',
+                'customer' => $customer->fresh()->only(['id', 'nama', 'no_hp', 'alamat', 'latitude', 'longitude', 'is_member', 'poin']),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menyimpan alamat: ' . $e->getMessage(),
+            ], 422);
         }
     }
 

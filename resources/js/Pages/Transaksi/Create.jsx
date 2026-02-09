@@ -122,11 +122,26 @@ export default function TransaksiCreate({
         setAlamatUpdate('');
     }, [selectedCustomer]);
 
+    // Ganti customer → clear lokasi yang dipilih agar tidak dipakai untuk customer lain (terutama non-member)
+    useEffect(() => {
+        setShippingLocation(null);
+        setAutoDistance(0);
+        setAutoCost(0);
+        setShippingDistance(0);
+    }, [selectedCustomer?.id]);
+
+    // Format tanggal+waktu untuk input datetime-local (YYYY-MM-DDTHH:mm)
+    const toDateTimeLocal = (date = new Date()) => {
+        const d = date instanceof Date ? date : new Date(date);
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+
     // ─── Form ──────────────────────────────────────────────────────────────
     const { data, setData, post, processing, errors } = useForm({
         id_outlet: currentOutletId,
         id_customer: null,
-        tgl: new Date().toISOString().split('T')[0],
+        tgl: toDateTimeLocal(),
         batas_waktu: '',
         items: [],
         surcharges: [],
@@ -161,35 +176,50 @@ export default function TransaksiCreate({
     }, [serverErrors]);
 
     useEffect(() => {
-    if (!selectedShipping || !selectedCustomer) {
-        setShowMap(false);
-        setIsEditingAddress(false);
-        setUseExistingAddress(true);
-        return;
-    }
+        if (!selectedShipping || !selectedCustomer) {
+            setShowMap(false);
+            setIsEditingAddress(false);
+            setUseExistingAddress(true);
+            return;
+        }
 
-    const shipping = shippingOptions.find(s => s.id === selectedShipping);
-    if (!shipping || shipping.calculation_type !== 'distance') {
-        setShowMap(false);
-        setIsEditingAddress(false);
-        setUseExistingAddress(true);
-        return;
-    }
+        const shipping = shippingOptions.find((s) => s.id === selectedShipping);
+        if (!shipping || shipping.calculation_type !== 'distance') {
+            setShowMap(false);
+            setIsEditingAddress(false);
+            setUseExistingAddress(true);
+            return;
+        }
 
-    // Customer belum punya alamat → Auto buka map
-    if (!selectedCustomer.alamat) {
-        setShowMap(true);
-        setUseExistingAddress(false);
-        setIsEditingAddress(true);
-    } else {
-        // Customer sudah punya alamat → Default pakai existing
-        setUseExistingAddress(true);
-        setIsEditingAddress(false);
-        setShowMap(false);
-    }
-}, [selectedShipping, selectedCustomer, shippingOptions]);
+        const hasCoords =
+            selectedCustomer.latitude != null && selectedCustomer.longitude != null;
+        const punyaAlamatDanCoords = selectedCustomer.alamat && hasCoords;
 
-    // ─── Fetch ongkir untuk alamat tersimpan (Bug 1: ongkir terhitung saat pakai alamat tersimpan)
+        // Kalau kasir lagi MODE EDIT alamat (setelah klik \"Ganti Lokasi Pengiriman\"),
+        // jangan auto-switch kembali ke alamat lama meskipun customer sudah punya koordinat.
+        if (isEditingAddress) {
+            setShowMap(true);
+            setUseExistingAddress(false);
+            return;
+        }
+
+        // Mode normal (tidak sedang edit):
+        if (punyaAlamatDanCoords) {
+            // Customer sudah punya alamat + koordinat → default pakai alamat tersimpan, tanpa peta
+            setUseExistingAddress(true);
+            setIsEditingAddress(false);
+            setShowMap(false);
+        } else {
+            // Belum punya alamat/koordinat → wajib pilih di peta
+            if (!shippingLocation?.address) {
+                setShowMap(true);
+                setUseExistingAddress(false);
+                setIsEditingAddress(true);
+            }
+        }
+    }, [selectedShipping, selectedCustomer, shippingOptions, shippingLocation, isEditingAddress]);
+
+    // ─── Fetch ongkir untuk alamat tersimpan (auto-fetch saat customer dipilih)
     useEffect(() => {
         if (!selectedCustomer?.alamat || !selectedShipping || !currentOutletId) {
             setAutoDistance(0);
@@ -197,6 +227,7 @@ export default function TransaksiCreate({
             setShippingDistance(0);
             return;
         }
+        
         const shipping = shippingOptions.find(s => s.id === selectedShipping);
         if (!shipping || shipping.calculation_type !== 'distance') {
             setAutoDistance(0);
@@ -204,22 +235,39 @@ export default function TransaksiCreate({
             setShippingDistance(0);
             return;
         }
+        
         const lat = selectedCustomer.latitude != null ? parseFloat(selectedCustomer.latitude) : null;
         const lng = selectedCustomer.longitude != null ? parseFloat(selectedCustomer.longitude) : null;
-        if (lat == null || lng == null || useExistingAddress === false) {
+        
+        // FIXED: Hapus kondisi useExistingAddress === false yang menyebabkan fetch tidak jalan
+        if (lat == null || lng == null) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/9117ef37-32fa-4361-956a-471015fc6adb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Create.jsx:ongkir-skip',message:'Ongkir fetch skipped',data:{customerId:selectedCustomer?.id,hasAlamat:!!selectedCustomer?.alamat,lat,lng,isEditingAddress},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+            // #endregion
             return;
         }
+        
+        // Skip jika sedang edit address (biar map yang handle)
+        if (isEditingAddress) {
+            return;
+        }
+        
         let cancelled = false;
         setCalculatingShipping(true);
+        
         const payload = {
             outlet_id: currentOutletId,
             customer_lat: lat,
             customer_lng: lng,
         };
         if (selectedShipping) payload.shipping_id = selectedShipping;
+        
         axios.post('/api/calculate-shipping', payload)
             .then((response) => {
                 if (cancelled || !response.data.success) return;
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/9117ef37-32fa-4361-956a-471015fc6adb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Create.jsx:ongkir-fetch-done',message:'Ongkir fetched for registered address',data:{customerId:selectedCustomer?.id,lat,lng,distance:response.data.distance,cost:response.data.cost},timestamp:Date.now(),hypothesisId:'H2,H3'})}).catch(()=>{});
+                // #endregion
                 setAutoDistance(response.data.distance);
                 setAutoCost(response.data.cost);
                 setShippingDistance(response.data.distance);
@@ -234,8 +282,17 @@ export default function TransaksiCreate({
             .finally(() => {
                 if (!cancelled) setCalculatingShipping(false);
             });
+        
         return () => { cancelled = true; };
-    }, [selectedCustomer?.id, selectedCustomer?.alamat, selectedCustomer?.latitude, selectedCustomer?.longitude, selectedShipping, currentOutletId, useExistingAddress]);
+    }, [
+        selectedCustomer?.id,
+        selectedCustomer?.alamat,
+        selectedCustomer?.latitude,
+        selectedCustomer?.longitude,
+        selectedShipping,
+        currentOutletId,
+        isEditingAddress  
+    ]);
 
     // ─── Helpers (Moved up for safety) ────────────────────────────────────
     const formatRupiah = (amount) =>
@@ -415,6 +472,9 @@ export default function TransaksiCreate({
                                 distance = autoDistance || shippingDistance || 0;
                             }
                             shippingCost = shipping.nominal * distance;
+                            // #region agent log
+                            fetch('http://127.0.0.1:7242/ingest/9117ef37-32fa-4361-956a-471015fc6adb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Create.jsx:calculateTotal-shipping',message:'Shipping cost computed',data:{useExistingAddress,hasAlamat:!!selectedCustomer?.alamat,autoDistance,shippingDistance,distance,shippingCost},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+                            // #endregion
                             break;
                         case 'fixed':
                         default:
@@ -551,16 +611,49 @@ export default function TransaksiCreate({
         toast.info('Menggunakan alamat terdaftar');
     };
 
-    // Confirm new address
-    const handleConfirmNewAddress = () => {
-        if (!shippingLocation?.address) {
+    // Confirm new address: simpan ke customer agar tidak hilang saat reload
+    const handleConfirmNewAddress = async () => {
+        if (!shippingLocation?.address || !selectedCustomer?.id) {
             toast.error('Pilih lokasi di peta terlebih dahulu');
             return;
         }
-        setIsEditingAddress(false);
-        setUseExistingAddress(false);
-        setShowMap(true); // Keep map visible to show confirmed location
-        toast.success(`Lokasi baru dikonfirmasi | Jarak: ${autoDistance} km | Ongkir: ${formatRupiah(autoCost)}`);
+        const lat = shippingLocation.lat != null ? parseFloat(shippingLocation.lat) : null;
+        const lng = shippingLocation.lng != null ? parseFloat(shippingLocation.lng) : null;
+        if (lat == null || lng == null) {
+            toast.error('Koordinat lokasi tidak valid');
+            return;
+        }
+
+        setCalculatingShipping(true);
+        try {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            const { data } = await axios.post(
+                route('customers.update-address', selectedCustomer.id),
+                {
+                    alamat: shippingLocation.address,
+                    latitude: lat,
+                    longitude: lng,
+                },
+                {
+                    headers: csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {},
+                }
+            );
+
+            if (data.success && data.customer) {
+                setSelectedCustomer((prev) => (prev ? { ...prev, ...data.customer } : null));
+                setIsEditingAddress(false);
+                setUseExistingAddress(true);
+                setShowMap(false);
+                toast.success(`Lokasi disimpan | Jarak: ${autoDistance} km | Ongkir: ${formatRupiah(autoCost)}`);
+            } else {
+                toast.error(data.message || 'Gagal menyimpan alamat');
+            }
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Gagal menyimpan alamat';
+            toast.error(msg);
+        } finally {
+            setCalculatingShipping(false);
+        }
     };
 
     
@@ -632,7 +725,19 @@ export default function TransaksiCreate({
                 finalAlamatUpdate = shippingLocation?.address || null;
                 finalShippingDistance = autoDistance || shippingDistance || 0;
             }
+        } else if (selectedShipping && (autoDistance > 0 || shippingDistance > 0)) {
+            // Customer punya alamat → butuhAlamat false, tapi ongkir tetap harus dikirim
+            // agar nominal di backend sama dengan yang ditampilkan di Create
+            finalShippingDistance = autoDistance || shippingDistance || 0;
+            // Jika user pilih lokasi di peta (mis. alamat ada tapi belum ada koordinat), simpan ke customer
+            if (shippingLocation?.address) {
+                finalAlamatUpdate = shippingLocation.address;
+            }
         }
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/9117ef37-32fa-4361-956a-471015fc6adb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Create.jsx:buildPayload',message:'Payload built',data:{butuhAlamat,useExistingAddress,hasAlamat:!!selectedCustomer?.alamat,finalShippingDistance,finalAlamatUpdate:!!finalAlamatUpdate,autoDistance,shippingDistance,calculationTotalAkhir:calculation.total_akhir},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
 
         const payloadData = {
             id_outlet: currentOutletId,
@@ -653,6 +758,9 @@ export default function TransaksiCreate({
             payloadData.latitude_update = shippingLocation.lat;
             payloadData.longitude_update = shippingLocation.lng;
         }
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/9117ef37-32fa-4361-956a-471015fc6adb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Create.jsx:payload-ready',message:'Payload ready for submit',data:{shipping_distance:payloadData.shipping_distance,calculation_total_akhir:calculation.total_akhir},timestamp:Date.now(),hypothesisId:'H1,H5'})}).catch(()=>{});
+        // #endregion
         return payloadData;
     };
 
@@ -731,6 +839,10 @@ export default function TransaksiCreate({
         }
 
         // UPDATED ALAMAT VALIDATION
+        const shippingOpt = selectedShipping ? shippingOptions.find(s => s.id === selectedShipping) : null;
+        const shippingNeedsLocation = shippingOpt && shippingOpt.calculation_type === 'distance';
+        const customerHasCoords = selectedCustomer.latitude != null && selectedCustomer.longitude != null;
+
         if (butuhAlamat) {
             if (useExistingAddress && selectedCustomer.alamat) {
                 // OK - pakai alamat existing
@@ -738,6 +850,12 @@ export default function TransaksiCreate({
                 // OK - sudah pilih lokasi baru
             } else {
                 toast.error('Tentukan lokasi pengiriman terlebih dahulu!');
+                return false;
+            }
+        } else if (shippingNeedsLocation && selectedCustomer.alamat && !customerHasCoords) {
+            // Alamat ada tapi koordinat belum → user wajib pilih lokasi di peta
+            if (!shippingLocation?.address) {
+                toast.error('Tentukan lokasi di peta untuk menghitung ongkir (alamat terdaftar belum punya koordinat).');
                 return false;
             }
         }
@@ -910,7 +1028,6 @@ export default function TransaksiCreate({
                                                         <div>
                                                             <p className="text-sm font-medium">{selectedCustomer.nama}</p>
                                                             <p className="text-xs text-gray-500">{selectedCustomer.no_hp}</p>
-                                                            {/* show existing address if present */}
                                                             {selectedCustomer.alamat && (
                                                                 <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
                                                                     <MapPin className="h-3 w-3" />
@@ -933,8 +1050,8 @@ export default function TransaksiCreate({
 
                                         <div className="grid md:grid-cols-2 gap-4">
                                             <div>
-                                                <Label htmlFor="tgl">Tanggal *</Label>
-                                                <Input id="tgl" type="date" value={data.tgl} onChange={(e) => setData('tgl', e.target.value)} />
+                                                <Label htmlFor="tgl">Tanggal & Waktu Transaksi *</Label>
+                                                <Input id="tgl" type="datetime-local" value={data.tgl} onChange={(e) => setData('tgl', e.target.value)} />
                                             </div>
                                             <div>
                                                 <Label htmlFor="batas_waktu">Batas Waktu Selesai *</Label>
@@ -1074,7 +1191,7 @@ export default function TransaksiCreate({
 
                                {/* ═══ UNIFIED SHIPPING SECTION (Manual + Auto with Map) ═══ */}
                             
-                            {shippingOptions.length > 0 && selectedCustomer && (
+                            {selectedCustomer && (
                                 <Card className="border-2 border-orange-200 dark:border-orange-900">
                                     <CardHeader>
                                         <CardTitle className="flex items-center gap-2">
@@ -1089,9 +1206,10 @@ export default function TransaksiCreate({
                                             <Select
                                                 value={selectedShipping?.toString() || 'none'}
                                                 onValueChange={handleShippingChange}
+                                                disabled={shippingOptions.length === 0}
                                             >
                                                 <SelectTrigger>
-                                                    <SelectValue placeholder="Tidak ada pengiriman" />
+                                                    <SelectValue placeholder={shippingOptions.length === 0 ? 'Tidak ada opsi pengiriman' : 'Tidak ada pengiriman'} />
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="none">Tidak ada pengiriman (Ambil Sendiri)</SelectItem>
@@ -1116,11 +1234,15 @@ export default function TransaksiCreate({
                                                 </SelectContent>
                                             </Select>
                                             <p className="mt-1 text-xs text-gray-500">
-                                                {selectedShipping && shippingOptions.find(s => s.id === selectedShipping)?.calculation_type === 'distance'
-                                                    ? selectedCustomer.alamat
-                                                        ? '✓ Customer sudah punya alamat terdaftar'
-                                                        : '⚠️ Alamat perlu ditentukan'
-                                                    : 'Biaya tetap tanpa perhitungan jarak'
+                                                {shippingOptions.length === 0
+                                                    ? 'Tambah opsi pengiriman di Master Data → Biaya Tambahan (tipe pengiriman).'
+                                                    : selectedShipping && shippingOptions.find(s => s.id === selectedShipping)?.calculation_type === 'distance'
+                                                        ? selectedCustomer.alamat
+                                                            ? '✓ Customer sudah punya alamat terdaftar'
+                                                            : '⚠️ Alamat perlu ditentukan'
+                                                        : selectedShipping
+                                                            ? 'Biaya tetap tanpa perhitungan jarak'
+                                                            : 'Pilih opsi pengiriman untuk menambah ongkir'
                                                 }
                                             </p>
                                         </div>
@@ -1174,7 +1296,7 @@ export default function TransaksiCreate({
                                                                 Alamat pengiriman belum terdaftar
                                                             </p>
                                                             <p className="text-sm text-amber-800 dark:text-amber-300 mb-3">
-                                                                Customer <strong>{selectedCustomer.nama}</strong> belum memiliki alamat. 
+                                                                Customer <strong>{selectedCustomer.nama}</strong> belum memiliki alamat.
                                                                 Tentukan lokasi pengiriman untuk melanjutkan.
                                                             </p>
                                                             <Button
@@ -1193,6 +1315,19 @@ export default function TransaksiCreate({
                                                 {/* ═══ MAP SECTION - Show when editing ═══ */}
                                                 {(showMap || isEditingAddress) && (
                                                     <div className="space-y-4 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg border-2 border-blue-200">
+                                                        {selectedCustomer.alamat && (selectedCustomer.latitude == null || selectedCustomer.longitude == null) && (
+                                                            <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-900/10">
+                                                                <AlertCircle className="h-5 w-5 text-amber-600" />
+                                                                <AlertDescription>
+                                                                    <p className="font-semibold text-amber-900 dark:text-amber-200">
+                                                                        Koordinat alamat terdaftar belum tersimpan
+                                                                    </p>
+                                                                    <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
+                                                                        Tentukan lokasi di peta agar ongkir bisa dihitung dan nominal total sesuai.
+                                                                    </p>
+                                                                </AlertDescription>
+                                                            </Alert>
+                                                        )}
                                                         <div className="flex items-center justify-between">
                                                             <div>
                                                                 <Label className="text-base font-semibold flex items-center gap-2">
@@ -1343,7 +1478,7 @@ export default function TransaksiCreate({
                                                                 </Button>
                                                                 {selectedCustomer.alamat && (
                                                                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 italic">
-                                                                        ⚠️ Alamat customer akan diupdate setelah transaksi disimpan
+                                                                        ⚠️ Alamat customer akan disimpan setelah transaksi
                                                                     </p>
                                                                 )}
                                                             </div>
@@ -1578,21 +1713,19 @@ export default function TransaksiCreate({
                                                     </div>
                                                 )}
 
-                                                {/* Shipping Summary */}
-                                              {calculation.shipping_cost > 0 && (
-                                                    <>
-                                                        <Separator />
-                                                        <div className="flex justify-between text-sm">
-                                                            <span className="flex items-center gap-1">
-                                                                <Truck className="h-3 w-3" />
-                                                                Ongkir{autoDistance > 0 && ` (${autoDistance} km)`}:
-                                                            </span>
-                                                            <span className="font-medium text-orange-600">
-                                                                + {formatRupiah(calculation.shipping_cost)}
-                                                            </span>
-                                                        </div>
-                                                    </>
-                                                )}
+                                                {/* Shipping Summary - selalu tampil agar section ongkir tidak "hilang" */}
+                                                <Separator />
+                                                <div className="flex justify-between text-sm">
+                                                    <span className="flex items-center gap-1">
+                                                        <Truck className="h-3 w-3" />
+                                                        Ongkir{autoDistance > 0 && ` (${autoDistance} km)`}:
+                                                    </span>
+                                                    <span className={`font-medium ${calculation.shipping_cost > 0 ? 'text-orange-600' : 'text-gray-500'}`}>
+                                                        {calculation.shipping_cost > 0
+                                                            ? `+ ${formatRupiah(calculation.shipping_cost)}`
+                                                            : 'Rp 0'}
+                                                    </span>
+                                                </div>
                                                 {calculation.total_diskon > 0 && (
                                                     <>
                                                         <Separator />

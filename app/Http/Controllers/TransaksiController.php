@@ -10,6 +10,7 @@ use App\Models\Promo;
 use App\Models\Surcharge;
 use App\Models\Setting;
 use App\Traits\HasAuthorization;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -73,6 +74,7 @@ class TransaksiController extends Controller
 
         $transaksis = $transaksiQuery
             ->orderBy('tgl', 'desc')
+            ->orderBy('id', 'desc')
             ->paginate(15)
             ->withQueryString();
 
@@ -261,13 +263,38 @@ class TransaksiController extends Controller
                 $customer
             );
 
+            // #region agent log
+            $logPath = base_path('.cursor/debug.log');
+            $logEntry = json_encode([
+                'location' => 'TransaksiController.php:store-after-calc',
+                'message' => 'Backend received and calculated',
+                'data' => [
+                    'shipping_distance_received' => $validated['shipping_distance'] ?? 0,
+                    'shipping_cost_calc' => $calculation['shipping_cost'],
+                    'total_akhir_calc' => $calculation['total_akhir'],
+                    'biaya_tambahan_stored' => $calculation['total_surcharge'] + $calculation['shipping_cost'],
+                ],
+                'timestamp' => (int) (microtime(true) * 1000),
+                'hypothesisId' => 'H5',
+            ]) . "\n";
+            @file_put_contents($logPath, $logEntry, FILE_APPEND | LOCK_EX);
+            // #endregion
+
+            // Parse tgl & batas_waktu sebagai waktu lokal (WIB) agar jam yang diinput
+            // user (mis. 11:25) tidak dianggap UTC dan tampil salah (18:25)
+            $tz = 'Asia/Jakarta';
+            $tgl = Carbon::parse($validated['tgl'], $tz);
+            $batasWaktu = isset($validated['batas_waktu']) && $validated['batas_waktu'] !== ''
+                ? Carbon::parse($validated['batas_waktu'], $tz)
+                : null;
+
             // Create transaction
             $transaksi = Transaksi::create([
                 'id_outlet' => $validated['id_outlet'],
                 'kode_invoice' => $this->generateInvoiceCode($validated['id_outlet']),
                 'id_customer' => $validated['id_customer'],
-                'tgl' => $validated['tgl'],
-                'batas_waktu' => $validated['batas_waktu'],
+                'tgl' => $tgl,
+                'batas_waktu' => $batasWaktu,
                 'tgl_bayar' => $validated['payment_action'] === 'bayar_lunas' ? now() : null,
                 'biaya_tambahan' => $calculation['total_surcharge'] + $calculation['shipping_cost'],
                 'diskon' => $calculation['total_diskon'],
@@ -313,7 +340,7 @@ class TransaksiController extends Controller
                 }
             }
 
-            // Update customer address and coordinates if provided
+            // Update alamat dan koordinat customer untuk semua (member & non-member); non-member bisa jadi member nanti
             if ($customer && !empty($validated['alamat_update'])) {
                 $update = ['alamat' => $validated['alamat_update']];
                 if (isset($validated['latitude_update']) && isset($validated['longitude_update'])) {

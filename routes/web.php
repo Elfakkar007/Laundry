@@ -145,6 +145,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->middleware('permission:customer.update')
             ->name('toggle-member');
         
+        Route::post('/{customer}/update-address', [CustomerController::class, 'updateAddress'])
+            ->middleware('permission:customer.update')
+            ->name('update-address');
+        
         // NEW: Customer Detail & Points Management
         Route::get('/{customer}', [CustomerController::class, 'show'])
             ->middleware('permission:customer.view')

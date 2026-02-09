@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/Components/ui/button';
 import { 
     DropdownMenu, 
@@ -24,13 +24,21 @@ import {
     X,
     LogOut,
     ChevronDown,
-    Sparkles
+    Sparkles,
+    Clock
 } from 'lucide-react';
 
 export default function AuthenticatedLayout({ header, children }) {
     const { auth } = usePage().props;
     const user = auth.user;
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [currentTime, setCurrentTime] = useState(() => new Date());
+
+    // Jam realtime — update setiap detik
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(timer);
+    }, []);
 
     // Get user permissions (dari Spatie Laravel Permission)
     const hasPermission = (permission) => {
@@ -284,6 +292,23 @@ export default function AuthenticatedLayout({ header, children }) {
                                     {header}
                                 </h1>
                             )}
+                        </div>
+
+                        {/* Jam Realtime */}
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 font-mono tabular-nums">
+                            <Clock className="h-4 w-4" />
+                            {currentTime.toLocaleDateString('id-ID', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                            })}
+                            <span className="text-gray-400 dark:text-gray-500">|</span>
+                            {currentTime.toLocaleTimeString('id-ID', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                hour12: false,
+                            })}
                         </div>
 
                         {/* User Dropdown */}
