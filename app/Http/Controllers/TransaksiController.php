@@ -352,15 +352,20 @@ class TransaksiController extends Controller
 
             // Auto-member check
             if ($customer && !$customer->is_member) {
-                $completedCount = Transaksi::where('id_customer', $customer->id)
-                    ->where('status', '!=', 'batal')
-                    ->count();
+                $autoMemberEnabled = Setting::getValue('auto_member_enabled', true);
+                $requiredTransactions = (int) Setting::getValue('auto_member_transaction_count', 5);
+                
+                if ($autoMemberEnabled) {
+                    $completedCount = Transaksi::where('id_customer', $customer->id)
+                        ->where('status', '!=', 'batal')
+                        ->count();
 
-                if ($completedCount >= 5) {
-                    $customer->update(['is_member' => true]);
+                    if ($completedCount >= $requiredTransactions) {
+                        $customer->update(['is_member' => true]);
+                         session()->flash('success', "🎉 Selamat! Customer otomatis diupgrade ke Member setelah {$requiredTransactions} transaksi!");
+                    }
                 }
             }
-
             DB::commit();
 
             return redirect()->route('transaksi.index')->with('success', 'Transaksi berhasil dibuat!');

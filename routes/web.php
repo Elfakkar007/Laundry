@@ -122,7 +122,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
     
     // ========================================
-    // CUSTOMER MANAGEMENT - Admin & Kasir (UPDATED)
+    // CUSTOMER MANAGEMENT - Admin & Kasir Only (Owner cannot access)
     // ========================================
     Route::middleware(['role:admin|kasir'])->prefix('customers')->name('customers.')->group(function () {
         Route::get('/', [CustomerController::class, 'index'])
@@ -149,7 +149,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->middleware('permission:customer.update')
             ->name('update-address');
         
-        // NEW: Customer Detail & Points Management
         Route::get('/{customer}', [CustomerController::class, 'show'])
             ->middleware('permission:customer.view')
             ->name('show');
@@ -160,7 +159,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     // ========================================
-    // TRANSAKSI MANAGEMENT - Admin & Kasir (NEW!)
+    // TRANSAKSI MANAGEMENT - Admin & Kasir Only (Owner cannot access)
     // ========================================
     Route::middleware(['role:admin|kasir'])->prefix('transaksi')->name('transaksi.')->group(function () {
         Route::get('/', [TransaksiController::class, 'index'])
@@ -195,6 +194,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->middleware('permission:transaksi.create')
             ->name('destroy');
     });
+
+    // ========================================
+    // LAPORAN (REPORTS) - Owner & Admin Only
+    // TODO: Implement ReportController
+    // ========================================
+    // Route::middleware(['role:owner|admin'])->prefix('reports')->name('reports.')->group(function () {
+    //     Route::get('/', [ReportController::class, 'index'])
+    //         ->middleware('permission:report.view')
+    //         ->name('index');
+    // });
 
     // ========================================
     // SETTINGS - Admin Only

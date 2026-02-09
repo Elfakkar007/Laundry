@@ -7,9 +7,6 @@ use Illuminate\Database\Seeder;
 
 class SettingSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
         $settings = [
@@ -27,7 +24,7 @@ class SettingSeeder extends Seeder
                 'description' => 'Otomatis terapkan pajak pada setiap transaksi',
             ],
             
-            // NEW: Points System Settings
+            // Points System Settings
             [
                 'key' => 'points_enabled',
                 'value' => 'true',
@@ -45,6 +42,20 @@ class SettingSeeder extends Seeder
                 'value' => '500',
                 'type' => 'number',
                 'description' => 'Nilai tukar 1 poin dalam Rupiah',
+            ],
+            
+            // 🆕 Auto-Member Settings
+            [
+                'key' => 'auto_member_enabled',
+                'value' => 'true',
+                'type' => 'boolean',
+                'description' => 'Aktifkan upgrade otomatis ke member setelah transaksi tertentu',
+            ],
+            [
+                'key' => 'auto_member_transaction_count',
+                'value' => '5',
+                'type' => 'number',
+                'description' => 'Jumlah transaksi yang dibutuhkan untuk upgrade otomatis ke member',
             ],
         ];
 

@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react'; // ✅ Ganti useForm dengan router
 import { useState, useEffect } from 'react';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -7,10 +7,11 @@ import { Label } from '@/Components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card';
 import { Switch } from '@/Components/ui/switch';
 import { toast } from 'sonner';
-import { Settings, Save, DollarSign, Percent, Gift, TrendingUp } from 'lucide-react';
+import { Settings, Save, DollarSign, Percent, Gift, TrendingUp, Crown } from 'lucide-react';
 
 export default function SettingsIndex({ settings, flash }) {
     const [settingsData, setSettingsData] = useState({});
+    const [processing, setProcessing] = useState(false); // ✅ State manual untuk loading
 
     useEffect(() => {
         const data = {};
@@ -19,7 +20,7 @@ export default function SettingsIndex({ settings, flash }) {
             if (setting.type === 'boolean') {
                 value = setting.value === 'true' || setting.value === true;
             } else if (setting.type === 'number') {
-                value = parseFloat(setting.value) || 0; // FIX: Default to 0 if empty
+                value = parseFloat(setting.value) || 0;
             }
             data[setting.key] = value;
         });
@@ -35,8 +36,6 @@ export default function SettingsIndex({ settings, flash }) {
         }
     }, [flash]);
 
-    const { post, processing } = useForm();
-
     const handleSubmit = (e) => {
         e.preventDefault();
 
@@ -45,24 +44,42 @@ export default function SettingsIndex({ settings, flash }) {
             value: String(value)
         }));
 
-        post(route('settings.bulk-update'), {
-            data: { settings: settingsArray },
-            preserveScroll: true,
-            onSuccess: () => {
-                toast.success('Pengaturan berhasil disimpan!');
-            },
-            onError: (errors) => {
-                console.error('Errors:', errors);
-                toast.error('Gagal menyimpan pengaturan');
+        console.log('Submitting settings:', settingsArray); // Debug log
+
+        setProcessing(true);
+
+        // ✅ Gunakan router.post langsung
+        router.post(route('settings.bulk-update'), 
+            { settings: settingsArray }, // ✅ Data langsung di level root
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setProcessing(false);
+                },
+                onError: (errors) => {
+                    console.error('Errors:', errors);
+                    
+                    // Show specific error messages
+                    if (errors.settings) {
+                        toast.error(errors.settings);
+                    } else if (Object.keys(errors).length > 0) {
+                        toast.error('Gagal menyimpan pengaturan: ' + Object.values(errors)[0]);
+                    } else {
+                        toast.error('Gagal menyimpan pengaturan');
+                    }
+                    setProcessing(false);
+                },
+                onFinish: () => {
+                    setProcessing(false);
+                }
             }
-        });
+        );
     };
 
-    // FIX: Handle empty input properly
     const updateSetting = (key, value) => {
         setSettingsData(prev => ({
             ...prev,
-            [key]: value === '' ? 0 : value // Convert empty string to 0
+            [key]: value === '' ? 0 : value
         }));
     };
 
@@ -72,14 +89,7 @@ export default function SettingsIndex({ settings, flash }) {
     const pointsValue = earnedPoints * (settingsData.points_redeem_value || 500);
 
     return (
-        <AuthenticatedLayout
-            header={
-                <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200 flex items-center gap-2">
-                    <Settings className="h-5 w-5" />
-                    Pengaturan Bisnis
-                </h2>
-            }
-        >
+        <AuthenticatedLayout header="Pengaturan Bisnis">
             <Head title="Pengaturan" />
 
             <div className="py-12">
@@ -136,7 +146,8 @@ export default function SettingsIndex({ settings, flash }) {
                                 </div>
                             </CardContent>
                         </Card>
-                        {/* NEW: Points System Settings */}
+
+                        {/* Points System Settings */}
                         <Card className="border-2 border-amber-200 dark:border-amber-900">
                             <CardHeader className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/10 dark:to-yellow-900/10">
                                 <CardTitle className="flex items-center gap-2">
@@ -148,7 +159,6 @@ export default function SettingsIndex({ settings, flash }) {
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4 pt-6">
-                                {/* Enable/Disable Points */}
                                 <div className="flex items-center justify-between p-4 border-2 rounded-lg bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/10 dark:to-yellow-900/10">
                                     <div>
                                         <Label htmlFor="points_enabled" className="cursor-pointer font-semibold flex items-center gap-2">
@@ -166,7 +176,6 @@ export default function SettingsIndex({ settings, flash }) {
                                     />
                                 </div>
 
-                                {/* Points Earn Ratio */}
                                 <div>
                                     <Label htmlFor="points_earn_ratio" className="flex items-center gap-2">
                                         <DollarSign className="h-4 w-4" />
@@ -188,7 +197,6 @@ export default function SettingsIndex({ settings, flash }) {
                                     </p>
                                 </div>
 
-                                {/* Points Redeem Value */}
                                 <div>
                                     <Label htmlFor="points_redeem_value" className="flex items-center gap-2">
                                         <Gift className="h-4 w-4" />
@@ -210,7 +218,6 @@ export default function SettingsIndex({ settings, flash }) {
                                     </p>
                                 </div>
 
-                                {/* Example Calculation */}
                                 {settingsData.points_enabled && (
                                     <div className="p-4 border-2 border-dashed border-amber-300 rounded-lg bg-amber-50/50 dark:bg-amber-900/5">
                                         <div className="flex items-start gap-3">
@@ -227,6 +234,83 @@ export default function SettingsIndex({ settings, flash }) {
                                                     <p>
                                                         • {earnedPoints} poin dapat ditukar → 
                                                         <span className="font-semibold text-green-600"> Rp {pointsValue.toLocaleString('id-ID')}</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Auto-Member Settings */}
+                        <Card className="border-2 border-purple-200 dark:border-purple-900">
+                            <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/10 dark:to-pink-900/10">
+                                <CardTitle className="flex items-center gap-2">
+                                    <Crown className="h-5 w-5 text-purple-600" />
+                                    Upgrade Otomatis ke Member
+                                </CardTitle>
+                                <CardDescription>
+                                    Konfigurasi kapan customer otomatis diupgrade menjadi member
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4 pt-6">
+                                <div className="flex items-center justify-between p-4 border-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/10 dark:to-pink-900/10">
+                                    <div>
+                                        <Label htmlFor="auto_member_enabled" className="cursor-pointer font-semibold flex items-center gap-2">
+                                            <TrendingUp className="h-4 w-4" />
+                                            Aktifkan Auto-Upgrade
+                                        </Label>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Customer reguler akan otomatis menjadi member setelah transaksi tertentu
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        id="auto_member_enabled"
+                                        checked={settingsData.auto_member_enabled || false}
+                                        onCheckedChange={(checked) => updateSetting('auto_member_enabled', checked)}
+                                    />
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="auto_member_transaction_count" className="flex items-center gap-2">
+                                        <DollarSign className="h-4 w-4" />
+                                        Jumlah Transaksi yang Dibutuhkan
+                                    </Label>
+                                    <Input
+                                        id="auto_member_transaction_count"
+                                        type="number"
+                                        step="1"
+                                        min="1"
+                                        value={settingsData.auto_member_transaction_count || ''}
+                                        onChange={(e) => updateSetting('auto_member_transaction_count', e.target.value)}
+                                        placeholder="5"
+                                        className="mt-1"
+                                        disabled={!settingsData.auto_member_enabled}
+                                    />
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        Contoh: Jika diset 5, customer akan menjadi member setelah 5 transaksi selesai
+                                    </p>
+                                </div>
+
+                                {settingsData.auto_member_enabled && (
+                                    <div className="p-4 border-2 border-dashed border-purple-300 rounded-lg bg-purple-50/50 dark:bg-purple-900/5">
+                                        <div className="flex items-start gap-3">
+                                            <Crown className="h-5 w-5 text-purple-600 mt-0.5" />
+                                            <div className="flex-1">
+                                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                                    Contoh Skenario
+                                                </p>
+                                                <div className="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                                                    <p>
+                                                        • Customer baru → Reguler (0 transaksi)
+                                                    </p>
+                                                    <p>
+                                                        • Setelah transaksi ke-{settingsData.auto_member_transaction_count || 5} selesai →
+                                                        <span className="font-semibold text-purple-600"> Otomatis upgrade ke Member! 🎉</span>
+                                                    </p>
+                                                    <p>
+                                                        • Member mendapat benefit: Poin, Promo eksklusif
                                                     </p>
                                                 </div>
                                             </div>

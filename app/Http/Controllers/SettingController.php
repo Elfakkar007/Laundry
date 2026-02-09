@@ -22,13 +22,14 @@ class SettingController extends Controller
             'points_enabled',
             'points_earn_ratio',
             'points_redeem_value',
+            'auto_member_enabled',         
+            'auto_member_transaction_count',
         ])->get();
 
         return Inertia::render('Settings/Index', [
             'settings' => $settings,
         ]);
     }
-
     /**
      * Bulk update settings - FIXED
      */

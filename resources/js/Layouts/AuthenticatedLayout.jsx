@@ -25,7 +25,8 @@ import {
     LogOut,
     ChevronDown,
     Sparkles,
-    Clock
+    Clock,
+    BarChart3
 } from 'lucide-react';
 
 export default function AuthenticatedLayout({ header, children }) {
@@ -49,27 +50,42 @@ export default function AuthenticatedLayout({ header, children }) {
         return user.roles?.includes(role) || false;
     };
 
-    // Menu items dengan permission check
+    // Check user role
+    const isOwner = hasRole('owner');
+    const isKasir = hasRole('kasir');
+    const isAdmin = hasRole('admin');
+
+    // Menu items dengan role-based filtering yang lebih ketat
     const menuItems = [
         {
             name: 'Dashboard',
             href: route('dashboard'),
             icon: LayoutDashboard,
             active: route().current('dashboard'),
-            show: true, // Always show
+            show: true, // Semua role bisa lihat dashboard
         },
+        // KASIR & ADMIN: Transaksi
         {
             name: 'Transaksi',
             href: route('transaksi.index'),
             icon: FileText,
             active: route().current('transaksi.*'),
-            show: hasPermission('transaksi.view') || hasPermission('transaksi.create'),
+            show: (isKasir || isAdmin) && (hasPermission('transaksi.view') || hasPermission('transaksi.create')),
         },
+        // OWNER & ADMIN: Laporan (TODO: implement later)
+        {
+            name: 'Laporan',
+            href: '#', // route('reports.index'),
+            icon: BarChart3,
+            active: false, // route().current('reports.*'),
+            show: (isOwner || isAdmin) && hasPermission('report.view'),
+        },
+        // ADMIN ONLY: Master Data
         {
             name: 'Master Data',
             icon: Sparkles,
             isGroup: true,
-            show: hasPermission('outlet.view') || hasPermission('paket.view') || hasPermission('customer.view'),
+            show: isAdmin && (hasPermission('outlet.view') || hasPermission('paket.view') || hasPermission('customer.view')),
             items: [
                 {
                     name: 'Outlet',
@@ -101,11 +117,12 @@ export default function AuthenticatedLayout({ header, children }) {
                 },
             ],
         },
+        // ADMIN ONLY: Keuangan
         {
             name: 'Keuangan',
             icon: CreditCard,
             isGroup: true,
-            show: hasPermission('finance.view'),
+            show: isAdmin && hasPermission('finance.view'),
             items: [
                 {
                     name: 'Biaya Tambahan',
@@ -123,19 +140,21 @@ export default function AuthenticatedLayout({ header, children }) {
                 },
             ],
         },
+        // ADMIN ONLY: User Management
         {
             name: 'User Management',
             href: route('users.index'),
             icon: UserCog,
             active: route().current('users.*'),
-            show: hasPermission('user.view'),
+            show: isAdmin && hasPermission('user.view'),
         },
+        // ADMIN ONLY: Pengaturan
         {
             name: 'Pengaturan',
             href: route('settings.index'),
             icon: Settings,
             active: route().current('settings.*'),
-            show: hasPermission('setting.view'),
+            show: isAdmin && hasPermission('setting.view'),
         },
     ];
 
@@ -207,6 +226,7 @@ export default function AuthenticatedLayout({ header, children }) {
                                 </p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                                     {user.roles?.[0] || 'User'}
+                                    {user.outlet && ` • ${user.outlet.nama}`}
                                 </p>
                             </div>
                         </div>
@@ -263,6 +283,7 @@ export default function AuthenticatedLayout({ header, children }) {
                                 </p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                                     {user.roles?.[0] || 'User'}
+                                    {user.outlet && ` • ${user.outlet.nama}`}
                                 </p>
                             </div>
                         </div>
@@ -326,6 +347,9 @@ export default function AuthenticatedLayout({ header, children }) {
                                     <div>
                                         <p className="font-medium">{user.nama}</p>
                                         <p className="text-xs text-gray-500">@{user.username}</p>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            {user.roles?.[0]?.toUpperCase() || 'USER'}
+                                        </p>
                                     </div>
                                 </DropdownMenuLabel>
                                 <DropdownMenuSeparator />
