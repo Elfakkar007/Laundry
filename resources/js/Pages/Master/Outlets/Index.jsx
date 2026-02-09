@@ -2,7 +2,6 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, router } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import LocationPicker from '@/Components/LocationPicker';
-import { Textarea } from '@/Components/ui/textarea';
 import { Separator } from '@/Components/ui/separator';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -25,6 +24,10 @@ import {
 import { toast } from 'sonner';
 import { Pencil, Trash2, Plus, Search } from 'lucide-react';
 
+/**
+ * INSTRUKSI:
+ * Replace file ini ke: resources/js/Pages/Master/Outlets/Index.jsx
+ */
 export default function OutletsIndex({ outlets, filters, flash }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingOutlet, setEditingOutlet] = useState(null);
@@ -36,7 +39,6 @@ export default function OutletsIndex({ outlets, filters, flash }) {
         tlp: '',
         latitude: null,
         longitude: null,
-        price_per_km: 0,
     });
     const [isFetchingAddress, setIsFetchingAddress] = useState(false);
 
@@ -64,7 +66,6 @@ export default function OutletsIndex({ outlets, filters, flash }) {
             tlp: outlet.tlp,
             latitude: outlet.latitude,
             longitude: outlet.longitude,
-            price_per_km: outlet.price_per_km || 0,
         });
         setIsDialogOpen(true);
     };
@@ -102,6 +103,7 @@ export default function OutletsIndex({ outlets, filters, flash }) {
             replace: true,
         });
     };
+
     const handleLocationChange = async (location) => {
         // 1. Set koordinat dulu agar marker pindah instan
         setData(data => ({
@@ -124,7 +126,7 @@ export default function OutletsIndex({ outlets, filters, flash }) {
                     ...prevData,
                     latitude: location.lat,
                     longitude: location.lng,
-                    alamat: result.display_name // <-- INI KUNCINYA
+                    alamat: result.display_name
                 }));
             }
         } catch (error) {
@@ -242,7 +244,7 @@ export default function OutletsIndex({ outlets, filters, flash }) {
             </div>
 
             {/* Dialog Form */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>
@@ -253,7 +255,7 @@ export default function OutletsIndex({ outlets, filters, flash }) {
                     <form onSubmit={handleSubmit}>
                         <div className="grid gap-6 md:grid-cols-2">
                             
-                            {/* KOLOM KIRI: Info Dasar (Tanpa Input Alamat Manual) */}
+                            {/* KOLOM KIRI: Info Dasar */}
                             <div className="space-y-4">
                                 <div>
                                     <Label htmlFor="nama">Nama Outlet *</Label>
@@ -283,17 +285,13 @@ export default function OutletsIndex({ outlets, filters, flash }) {
                                     )}
                                 </div>
 
-                                <div>
-                                    <Label htmlFor="price_per_km">Harga per KM (Rp)</Label>
-                                    <Input
-                                        id="price_per_km"
-                                        type="number"
-                                        min="0"
-                                        value={data.price_per_km || 0}
-                                        onChange={(e) => setData('price_per_km', e.target.value)}
-                                    />
-                                    <p className="mt-1 text-xs text-gray-500">
-                                        Biaya ongkir per km dari titik outlet ini.
+                                <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-200">
+                                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
+                                        ℹ️ Pengaturan Ongkir
+                                    </p>
+                                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                                        Harga ongkir per-KM diatur secara global di halaman <strong>Biaya & Ongkir</strong>. 
+                                        Anda bisa membuat berbagai opsi ongkir (Express, Regular, dll) dengan harga berbeda.
                                     </p>
                                 </div>
                             </div>
@@ -310,7 +308,6 @@ export default function OutletsIndex({ outlets, filters, flash }) {
                                         <LocationPicker
                                             initialLat={data.latitude || -6.2088}
                                             initialLng={data.longitude || 106.8456}
-                                            // Panggil fungsi custom kita
                                             onLocationChange={handleLocationChange} 
                                             height="250px"
                                         />
@@ -329,15 +326,13 @@ export default function OutletsIndex({ outlets, filters, flash }) {
                                     </p>
                                 </div>
 
-                                {/* ALAMAT TERDETEKSI (Menggantikan Input Manual) */}
+                                {/* ALAMAT TERDETEKSI */}
                                 <div>
                                     <Label htmlFor="alamat_auto" className="flex justify-between">
                                         <span>Alamat Terdeteksi</span>
                                         <span className="text-xs font-normal text-gray-500">(Otomatis dari Peta)</span>
                                     </Label>
                                     
-                                    {/* Gunakan Textarea agar muat alamat panjang */}
-                                    {/* Saya sarankan tetap bisa diedit (readOnly={false}) kalau user mau tambah 'Lantai 2', dll */}
                                     <textarea
                                         id="alamat_auto"
                                         value={data.alamat || ''}

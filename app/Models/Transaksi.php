@@ -24,12 +24,13 @@ class Transaksi extends Model
     protected $fillable = [
         'id_outlet',
         'kode_invoice',
-        'id_customer', // Updated from id_member
+        'id_customer',
         'tgl',
         'batas_waktu',
         'tgl_bayar',
         'biaya_tambahan',
         'diskon',
+        'diskon_detail', // NEW: JSON detail multiple promo
         'pajak',
         'status',
         'dibayar',
@@ -44,6 +45,7 @@ class Transaksi extends Model
             'tgl_bayar' => 'datetime',
             'biaya_tambahan' => 'decimal:2',
             'diskon' => 'decimal:2',
+            'diskon_detail' => 'array', // NEW: Cast to array
             'pajak' => 'decimal:2',
         ];
     }
@@ -57,7 +59,7 @@ class Transaksi extends Model
     }
 
     /**
-     * Relasi ke Customer (Updated from Member)
+     * Relasi ke Customer
      */
     public function customer(): BelongsTo
     {
@@ -116,11 +118,45 @@ class Transaksi extends Model
     }
 
     /**
-     * Accessor untuk total akhir
+     * Accessor untuk total akhir.
+     * Pajak di DB disimpan sebagai nominal (rupiah), bukan persentase.
      */
     public function getTotalAkhirAttribute(): float
     {
-        $total = $this->total_sebelum_diskon - $this->diskon;
-        return $total + ($total * $this->pajak / 100);
+        $totalSetelahDiskon = $this->total_sebelum_diskon - $this->diskon;
+        return $totalSetelahDiskon + (float) $this->pajak;
+    }
+
+    /**
+     * NEW: Get applied promos detail
+     */
+    public function getAppliedPromosAttribute(): array
+    {
+        if (!$this->diskon_detail) {
+            return [];
+        }
+
+        // Filter only promo discounts (exclude points)
+        return array_filter($this->diskon_detail, function($discount) {
+            return isset($discount['id']) && $discount['id'] !== 'points';
+        });
+    }
+
+    /**
+     * NEW: Get points discount detail
+     */
+    public function getPointsDiscountAttribute(): ?array
+    {
+        if (!$this->diskon_detail) {
+            return null;
+        }
+
+        foreach ($this->diskon_detail as $discount) {
+            if (isset($discount['id']) && $discount['id'] === 'points') {
+                return $discount;
+            }
+        }
+
+        return null;
     }
 }

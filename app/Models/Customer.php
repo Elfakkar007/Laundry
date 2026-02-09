@@ -15,6 +15,8 @@ class Customer extends Model
         'nama',
         'no_hp',
         'alamat',
+        'latitude',
+        'longitude',
         'is_member',
         'poin',
         'user_id',

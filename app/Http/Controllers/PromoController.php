@@ -29,6 +29,7 @@ class PromoController extends Controller
             ->when($statusFilter === 'inactive', function ($query) {
                 $query->where('is_active', false);
             })
+            ->orderBy('priority', 'asc')
             ->orderBy('created_at', 'desc')
             ->paginate(10)
             ->withQueryString();
@@ -50,6 +51,8 @@ class PromoController extends Controller
             'jenis' => 'required|in:fixed,percent',
             'syarat_member_only' => 'boolean',
             'is_active' => 'boolean',
+            'is_stackable' => 'boolean',
+            'priority' => 'nullable|integer|min:1',
             'tanggal_mulai' => 'nullable|date',
             'tanggal_selesai' => 'nullable|date|after_or_equal:tanggal_mulai',
             'minimal_transaksi' => 'nullable|numeric|min:0',
@@ -61,7 +64,18 @@ class PromoController extends Controller
             'jenis.required' => 'Jenis diskon wajib dipilih',
             'jenis.in' => 'Jenis diskon tidak valid',
             'tanggal_selesai.after_or_equal' => 'Tanggal selesai harus setelah atau sama dengan tanggal mulai',
+            'priority.min' => 'Prioritas minimal 1',
         ]);
+
+        // Set default priority if not provided
+        if (!isset($validated['priority'])) {
+            $validated['priority'] = 100;
+        }
+
+        // Set default stackable if not provided
+        if (!isset($validated['is_stackable'])) {
+            $validated['is_stackable'] = true;
+        }
 
         try {
             Promo::create($validated);
@@ -83,6 +97,8 @@ class PromoController extends Controller
             'jenis' => 'required|in:fixed,percent',
             'syarat_member_only' => 'boolean',
             'is_active' => 'boolean',
+            'is_stackable' => 'boolean',
+            'priority' => 'nullable|integer|min:1',
             'tanggal_mulai' => 'nullable|date',
             'tanggal_selesai' => 'nullable|date|after_or_equal:tanggal_mulai',
             'minimal_transaksi' => 'nullable|numeric|min:0',
@@ -94,6 +110,7 @@ class PromoController extends Controller
             'jenis.required' => 'Jenis diskon wajib dipilih',
             'jenis.in' => 'Jenis diskon tidak valid',
             'tanggal_selesai.after_or_equal' => 'Tanggal selesai harus setelah atau sama dengan tanggal mulai',
+            'priority.min' => 'Prioritas minimal 1',
         ]);
 
         try {
@@ -133,6 +150,45 @@ class PromoController extends Controller
             return redirect()->back()->with('success', "Promo berhasil {$status}!");
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Gagal mengubah status: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * NEW: Toggle stackable status
+     */
+    public function toggleStackable(Promo $promo): RedirectResponse
+    {
+        try {
+            $promo->update([
+                'is_stackable' => !$promo->is_stackable
+            ]);
+
+            $status = $promo->is_stackable ? 'dapat dikombinasikan' : 'tidak dapat dikombinasikan';
+            return redirect()->back()->with('success', "Promo berhasil diubah menjadi {$status}!");
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal mengubah status: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * NEW: Update priority order
+     */
+    public function updatePriority(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'priorities' => 'required|array',
+            'priorities.*.id' => 'required|exists:promos,id',
+            'priorities.*.priority' => 'required|integer|min:1',
+        ]);
+
+        try {
+            foreach ($validated['priorities'] as $item) {
+                Promo::where('id', $item['id'])->update(['priority' => $item['priority']]);
+            }
+
+            return redirect()->back()->with('success', 'Urutan prioritas promo berhasil diupdate!');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal mengupdate prioritas: ' . $e->getMessage());
         }
     }
 }

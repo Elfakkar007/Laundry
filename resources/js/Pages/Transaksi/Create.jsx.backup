@@ -189,54 +189,6 @@ export default function TransaksiCreate({
     }
 }, [selectedShipping, selectedCustomer, shippingOptions]);
 
-    // ─── Fetch ongkir untuk alamat tersimpan (Bug 1: ongkir terhitung saat pakai alamat tersimpan)
-    useEffect(() => {
-        if (!selectedCustomer?.alamat || !selectedShipping || !currentOutletId) {
-            setAutoDistance(0);
-            setAutoCost(0);
-            setShippingDistance(0);
-            return;
-        }
-        const shipping = shippingOptions.find(s => s.id === selectedShipping);
-        if (!shipping || shipping.calculation_type !== 'distance') {
-            setAutoDistance(0);
-            setAutoCost(0);
-            setShippingDistance(0);
-            return;
-        }
-        const lat = selectedCustomer.latitude != null ? parseFloat(selectedCustomer.latitude) : null;
-        const lng = selectedCustomer.longitude != null ? parseFloat(selectedCustomer.longitude) : null;
-        if (lat == null || lng == null || useExistingAddress === false) {
-            return;
-        }
-        let cancelled = false;
-        setCalculatingShipping(true);
-        const payload = {
-            outlet_id: currentOutletId,
-            customer_lat: lat,
-            customer_lng: lng,
-        };
-        if (selectedShipping) payload.shipping_id = selectedShipping;
-        axios.post('/api/calculate-shipping', payload)
-            .then((response) => {
-                if (cancelled || !response.data.success) return;
-                setAutoDistance(response.data.distance);
-                setAutoCost(response.data.cost);
-                setShippingDistance(response.data.distance);
-            })
-            .catch(() => {
-                if (!cancelled) {
-                    setAutoDistance(0);
-                    setAutoCost(0);
-                    setShippingDistance(0);
-                }
-            })
-            .finally(() => {
-                if (!cancelled) setCalculatingShipping(false);
-            });
-        return () => { cancelled = true; };
-    }, [selectedCustomer?.id, selectedCustomer?.alamat, selectedCustomer?.latitude, selectedCustomer?.longitude, selectedShipping, currentOutletId, useExistingAddress]);
-
     // ─── Helpers (Moved up for safety) ────────────────────────────────────
     const formatRupiah = (amount) =>
         new Intl.NumberFormat('id-ID', {
@@ -353,7 +305,7 @@ export default function TransaksiCreate({
     
     useEffect(() => {
         calculateTotal();
-    }, [items, selectedSurcharges, surchargeDistances, selectedShipping, shippingDistance, selectedPromo, redeemPoints, autoShippingCost, autoDistance]);
+    }, [items, selectedSurcharges, surchargeDistances, selectedShipping, shippingDistance, selectedPromo, redeemPoints, autoShippingCost]);
 
     const calculateTotal = () => {
         // Step 1: subtotal items
@@ -395,7 +347,7 @@ export default function TransaksiCreate({
         });
 
         // Step 3: Shipping cost calculation
-        let shippingCost = 0;
+       let shippingCost = 0;
         if (selectedShipping) {
             const shipping = shippingOptions.find(s => s.id === selectedShipping);
             if (shipping) {
@@ -407,10 +359,11 @@ export default function TransaksiCreate({
                             shippingCost = (subtotalItems * shipping.nominal) / 100;
                             break;
                         case 'distance':
+                            // UPDATED: Prioritas jarak
                             let distance = 0;
                             if (useExistingAddress && selectedCustomer?.alamat) {
-                                // Pakai jarak dari alamat tersimpan (sudah di-fetch di useEffect)
-                                distance = autoDistance || shippingDistance || 0;
+                                // Pakai jarak dari perhitungan sebelumnya (0 = akan dihitung backend)
+                                distance = 0; // Untuk preview, set 0 dulu
                             } else {
                                 distance = autoDistance || shippingDistance || 0;
                             }
@@ -428,52 +381,31 @@ export default function TransaksiCreate({
         const baseForDiscount = subtotalItems + totalSurcharge;
         const grossTotalForPoints = baseForDiscount;
 
-        // NEW: Multiple Promo Calculation - Apply sequentially
-        const eligiblePromos = selectAllEligiblePromos();
-        let appliedPromos = [];
-        let remainingAmount = baseForDiscount;
-        let totalDiskonPromo = 0;
+        // Promo & Points calculation (unchanged)
+        
+        let diskonPromo = 0;
+        let selectedPromoAuto = null;
 
-        eligiblePromos.forEach(promo => {
-            if (remainingAmount <= 0) return;
-
-            // Re-check minimal transaksi with remaining amount
-            if (promo.minimal_transaksi && remainingAmount < promo.minimal_transaksi) {
-                return;
-            }
-
-            let discount = 0;
-            if (promo.jenis === 'percent') {
-                discount = (remainingAmount * promo.diskon) / 100;
+        const bestPromo = selectBestPromo();
+        if (bestPromo) {
+            selectedPromoAuto = bestPromo;
+            
+            if (bestPromo.jenis === 'percent') {
+                diskonPromo = (baseForDiscount * bestPromo.diskon) / 100;
             } else {
-                discount = Math.min(parseFloat(promo.diskon), remainingAmount);
+                diskonPromo = Math.min(parseFloat(bestPromo.diskon), baseForDiscount);
             }
+        }
 
-            if (discount > 0) {
-                appliedPromos.push({
-                    id: promo.id,
-                    nama: promo.nama_promo,
-                    jenis: promo.jenis,
-                    nilai: promo.diskon,
-                    amount: discount,
-                    is_member_only: promo.syarat_member_only,
-                });
-
-                totalDiskonPromo += discount;
-                remainingAmount -= discount;
-            }
-        });
-
-        // Points redemption
         const pointsRedeemValue = settings.points_redeem_value;
         const customerAvailablePoints = selectedCustomer?.poin || 0;
-        const remainingBillAfterPromo = Math.max(0, baseForDiscount - totalDiskonPromo);
+        const remainingBillAfterPromo = Math.max(0, baseForDiscount - diskonPromo);
         const maxRedeemablePointsByBill = Math.floor(remainingBillAfterPromo / pointsRedeemValue);
         const maxRedeemablePoints = Math.min(customerAvailablePoints, maxRedeemablePointsByBill);
         const actualRedeemPoints = Math.min(redeemPoints, maxRedeemablePoints);
         const diskonPoin = actualRedeemPoints * pointsRedeemValue;
 
-        const totalDiskon = totalDiskonPromo + diskonPoin;
+        const totalDiskon = diskonPromo + diskonPoin;
         const totalSetelahDiskon = Math.max(0, baseForDiscount - totalDiskon);
         const totalDenganShipping = totalSetelahDiskon + shippingCost;
 
@@ -496,8 +428,7 @@ export default function TransaksiCreate({
             auto_cost: autoCost,
             base_for_discount: baseForDiscount,
             gross_total_for_points: grossTotalForPoints,
-            diskon_promo: totalDiskonPromo,
-            applied_promos: appliedPromos, // NEW: Array of applied promos
+            diskon_promo: diskonPromo,
             diskon_poin: diskonPoin,
             total_diskon: totalDiskon,
             total_setelah_diskon: totalSetelahDiskon,
@@ -508,7 +439,6 @@ export default function TransaksiCreate({
             max_redeemable_points: maxRedeemablePoints,
         });
     };
-
 
     // ─── Quick-add customer submit ─────────────────────────────────────────
     const handleQuickAddCustomer = (e) => {
@@ -564,14 +494,74 @@ export default function TransaksiCreate({
     };
 
     
-    const selectAllEligiblePromos = () => {
-        if (!selectedCustomer) return [];
+    const selectBestPromo = () => {
+        if (!selectedCustomer) return null;
         
         const baseAmount = calculation.base_for_discount;
-        if (baseAmount === 0) return [];
-    
+        if (baseAmount === 0) return null;
+
+        // Filter promo yang eligible
         const eligiblePromos = promos.filter(promo => {
-            if (!promo.is_active || !promo.is_stackable) return false;
+            // Must be active
+            if (!promo.is_active) return false;
+            
+            // Check member requirement
+            if (promo.syarat_member_only && !selectedCustomer.is_member) return false;
+            
+            // Check minimal transaksi
+            if (promo.minimal_transaksi && baseAmount < promo.minimal_transaksi) return false;
+            
+            // Check date validity (if dates are provided)
+            const now = new Date();
+            if (promo.tanggal_mulai && new Date(promo.tanggal_mulai) > now) return false;
+            if (promo.tanggal_selesai && new Date(promo.tanggal_selesai) < now) return false;
+            
+            return true;
+        });
+
+        if (eligiblePromos.length === 0) return null;
+
+        // Calculate actual discount for each promo
+        const promosWithDiscount = eligiblePromos.map(promo => {
+            let actualDiscount = 0;
+            
+            if (promo.jenis === 'percent') {
+                actualDiscount = (baseAmount * promo.diskon) / 100;
+            } else {
+                actualDiscount = Math.min(parseFloat(promo.diskon), baseAmount);
+            }
+            
+            return {
+                ...promo,
+                actualDiscount
+            };
+        });
+
+        // Sort by actual discount (descending) - pilih yang paling besar
+        promosWithDiscount.sort((a, b) => b.actualDiscount - a.actualDiscount);
+
+        return promosWithDiscount[0];
+    };
+
+    // Get promo eligibility info for display
+    const getPromoInfo = () => {
+        if (!selectedCustomer) {
+            return {
+                hasEligible: false,
+                message: 'Pilih customer terlebih dahulu'
+            };
+        }
+
+        const baseAmount = calculation.base_for_discount;
+        if (baseAmount === 0) {
+            return {
+                hasEligible: false,
+                message: 'Belum ada item atau biaya'
+            };
+        }
+
+        const eligiblePromos = promos.filter(promo => {
+            if (!promo.is_active) return false;
             if (promo.syarat_member_only && !selectedCustomer.is_member) return false;
             if (promo.minimal_transaksi && baseAmount < promo.minimal_transaksi) return false;
             
@@ -581,34 +571,15 @@ export default function TransaksiCreate({
             
             return true;
         });
-    
-        return eligiblePromos.sort((a, b) => {
-            if (a.priority !== b.priority) {
-                return a.priority - b.priority;
-            }
-            return new Date(b.created_at) - new Date(a.created_at);
-        });
-    };
-    
-    // TAMBAHKAN FUNGSI INI DI SINI ↓↓↓
-    const getPromoInfo = () => {
-        if (!selectedCustomer) {
-            return {
-                hasEligible: false,
-                eligibleCount: 0,
-                promos: [],
-            };
-        }
-    
-        const eligiblePromos = selectAllEligiblePromos();
-        
+
         return {
             hasEligible: eligiblePromos.length > 0,
-            eligibleCount: eligiblePromos.length,
-            promos: eligiblePromos,
+            count: eligiblePromos.length,
+            eligiblePromos
         };
     };
-    
+
+
     const buildPayload = (paymentAction, jumlahBayar) => {
         const cleanItems = items
             .filter(item => item.id_paket && item.id_paket !== '' && item.id_paket !== 'none' && !isNaN(item.id_paket))
@@ -624,17 +595,18 @@ export default function TransaksiCreate({
         
         if (butuhAlamat) {
             if (useExistingAddress && selectedCustomer.alamat) {
-                // Pakai alamat existing - kirim jarak yang sudah dihitung dari koordinat customer
+                // Pakai alamat existing - tidak perlu update customer.alamat
                 finalAlamatUpdate = null;
-                finalShippingDistance = autoDistance || shippingDistance || 0;
+                // Backend akan hitung ulang jarak dari alamat existing
+                finalShippingDistance = 0;
             } else {
-                // Pakai alamat baru dari map - akan update customer.alamat + koordinat
+                // Pakai alamat baru dari map - akan update customer.alamat
                 finalAlamatUpdate = shippingLocation?.address || null;
                 finalShippingDistance = autoDistance || shippingDistance || 0;
             }
         }
 
-        const payloadData = {
+        return {
             id_outlet: currentOutletId,
             id_customer: selectedCustomer.id,
             tgl: data.tgl,
@@ -644,16 +616,12 @@ export default function TransaksiCreate({
             surcharge_distances: surchargeDistances,
             shipping_id: selectedShipping,
             shipping_distance: finalShippingDistance,
+            id_promo: selectedPromo,
             redeem_points: Math.min(redeemPoints, calculation.max_redeemable_points),
             payment_action: paymentAction,
             jumlah_bayar: jumlahBayar,
             alamat_update: finalAlamatUpdate,
         };
-        if (finalAlamatUpdate && shippingLocation?.lat != null && shippingLocation?.lng != null) {
-            payloadData.latitude_update = shippingLocation.lat;
-            payloadData.longitude_update = shippingLocation.lng;
-        }
-        return payloadData;
     };
 
     // ─── Save Later ────────────────────────────────────────────────────────
@@ -1386,13 +1354,13 @@ export default function TransaksiCreate({
                                     <CardContent className="space-y-4">
                                         {/* AUTO PROMO SECTION */}
                                         <div>
-                                            <div>
                                             <Label className="text-base font-semibold mb-3 block">
                                                 Promo Otomatis
                                             </Label>
                                             
                                             {(() => {
                                                 const promoInfo = getPromoInfo();
+                                                const bestPromo = selectBestPromo();
                                                 
                                                 if (!selectedCustomer) {
                                                     return (
@@ -1420,106 +1388,109 @@ export default function TransaksiCreate({
                                                                     {calculation.base_for_discount === 0 && (
                                                                         <span>Tambahkan item untuk mengecek promo yang tersedia</span>
                                                                     )}
+                                                                    {calculation.base_for_discount > 0 && promos.some(p => p.minimal_transaksi && calculation.base_for_discount < p.minimal_transaksi) && (
+                                                                        <span>
+                                                                            Tambah {formatRupiah(Math.min(...promos.filter(p => p.minimal_transaksi).map(p => p.minimal_transaksi - calculation.base_for_discount).filter(d => d > 0)))} lagi untuk mendapat promo
+                                                                        </span>
+                                                                    )}
                                                                 </p>
                                                             </AlertDescription>
                                                         </Alert>
                                                     );
                                                 }
                                                 
-                                                // Show ALL applied promos
+                                                // Ada promo yang eligible
                                                 return (
                                                     <div className="space-y-3">
-                                                        <Alert className="border-green-300 bg-green-50 dark:bg-green-900/10">
-                                                            <Check className="h-4 w-4 text-green-600" />
-                                                            <AlertDescription>
-                                                                <p className="font-medium text-green-900 dark:text-green-200 mb-1">
-                                                                    {calculation.applied_promos?.length || 0} Promo Diterapkan Otomatis
-                                                                </p>
-                                                                <p className="text-xs text-green-800 dark:text-green-300">
-                                                                    Sistem otomatis memilih semua promo yang berlaku
-                                                                </p>
-                                                            </AlertDescription>
-                                                        </Alert>
-
-                                                        {/* List all applied promos */}
-                                                        {calculation.applied_promos && calculation.applied_promos.length > 0 && (
-                                                            <div className="space-y-2">
-                                                                {calculation.applied_promos.map((promo, index) => (
-                                                                    <div 
-                                                                        key={promo.id} 
-                                                                        className="p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-green-200 dark:border-green-800"
-                                                                    >
-                                                                        <div className="flex items-start justify-between gap-3">
-                                                                            <div className="flex items-start gap-2 flex-1">
-                                                                                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold">
-                                                                                    {index + 1}
-                                                                                </div>
-                                                                                <div className="flex-1">
-                                                                                    <div className="flex items-center gap-2 mb-1">
-                                                                                        <Check className="h-4 w-4 text-green-600" />
-                                                                                        <p className="font-semibold text-gray-900 dark:text-gray-100">
-                                                                                            {promo.nama}
-                                                                                        </p>
-                                                                                    </div>
-                                                                                    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                                                                                        <span>
-                                                                                            Diskon: {promo.jenis === 'percent' ? `${promo.nilai}%` : formatRupiah(promo.nilai)}
-                                                                                        </span>
-                                                                                        {promo.is_member_only && (
-                                                                                            <>
-                                                                                                <span>•</span>
-                                                                                                <Badge variant="outline" className="border-orange-400 text-orange-600 text-[10px] px-1.5 py-0">
-                                                                                                    <Crown className="h-2.5 w-2.5 mr-1" />
-                                                                                                    Member
-                                                                                                </Badge>
-                                                                                            </>
-                                                                                        )}
-                                                                                    </div>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div className="text-right">
-                                                                                <p className="text-xs text-gray-500 mb-0.5">Hemat</p>
-                                                                                <p className="text-lg font-bold text-green-600">
-                                                                                    {formatRupiah(promo.amount)}
-                                                                                </p>
-                                                                            </div>
-                                                                        </div>
+                                                        {/* BEST PROMO CARD */}
+                                                        {bestPromo && (
+                                                            <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/10 dark:to-emerald-900/10 rounded-lg border-2 border-green-300 dark:border-green-800">
+                                                                <div className="flex items-start gap-3">
+                                                                    <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
+                                                                        <Check className="h-5 w-5 text-green-600" />
                                                                     </div>
-                                                                ))}
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="flex items-center gap-2 mb-1">
+                                                                            <p className="text-xs font-bold text-green-800 dark:text-green-300 uppercase tracking-wide">
+                                                                                PROMO TERPILIH
+                                                                            </p>
+                                                                            <Badge variant="outline" className="border-green-500 text-green-700 text-[10px] px-1.5 py-0">
+                                                                                Otomatis
+                                                                            </Badge>
+                                                                        </div>
+                                                                        <p className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1">
+                                                                            {bestPromo.nama_promo}
+                                                                        </p>
+                                                                        <div className="flex items-center gap-3 text-sm mb-2">
+                                                                            <span className="font-semibold text-green-600">
+                                                                                Diskon: {bestPromo.jenis === 'percent' ? `${bestPromo.diskon}%` : formatRupiah(bestPromo.diskon)}
+                                                                            </span>
+                                                                            <span className="text-gray-500">•</span>
+                                                                            <span className="text-gray-700 dark:text-gray-300">
+                                                                                Hemat: {formatRupiah(bestPromo.actualDiscount)}
+                                                                            </span>
+                                                                        </div>
+                                                                        {bestPromo.keterangan && (
+                                                                            <p className="text-xs text-gray-600 dark:text-gray-400 italic">
+                                                                                {bestPromo.keterangan}
+                                                                            </p>
+                                                                        )}
+                                                                        {bestPromo.syarat_member_only && (
+                                                                            <div className="mt-2 flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
+                                                                                <Crown className="h-3 w-3" />
+                                                                                <span>Promo Member Eksklusif</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         )}
 
-                                                        {/* Show available but not applied promos (if any) */}
-                                                        {promoInfo.promos.length > (calculation.applied_promos?.length || 0) && (
-                                                            <details className="text-xs text-gray-500">
-                                                                <summary className="cursor-pointer hover:text-gray-700">
-                                                                    Lihat {promoInfo.promos.length - (calculation.applied_promos?.length || 0)} promo lainnya yang tersedia
+                                                        {/* OTHER ELIGIBLE PROMOS */}
+                                                        {promoInfo.count > 1 && (
+                                                            <details className="group">
+                                                                <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-2">
+                                                                    <span>Lihat {promoInfo.count - 1} promo lainnya</span>
+                                                                    <span className="text-xs transform group-open:rotate-180 transition-transform">▼</span>
                                                                 </summary>
-                                                                <div className="mt-2 space-y-1">
-                                                                    {promoInfo.promos
-                                                                        .filter(p => !calculation.applied_promos?.some(ap => ap.id === p.id))
-                                                                        .map(promo => (
-                                                                            <div key={promo.id} className="p-2 bg-gray-50 rounded text-xs">
-                                                                                {promo.nama_promo} - {promo.jenis === 'percent' ? `${promo.diskon}%` : formatRupiah(promo.diskon)}
-                                                                                {promo.minimal_transaksi && ` (Min. ${formatRupiah(promo.minimal_transaksi)})`}
-                                                                            </div>
-                                                                        ))
+                                                                <div className="mt-3 space-y-2 pl-2 border-l-2 border-gray-200 dark:border-gray-700">
+                                                                    {promoInfo.eligiblePromos
+                                                                        .filter(p => p.id !== bestPromo?.id)
+                                                                        .map(promo => {
+                                                                            const discount = promo.jenis === 'percent' 
+                                                                                ? (calculation.base_for_discount * promo.diskon) / 100
+                                                                                : Math.min(parseFloat(promo.diskon), calculation.base_for_discount);
+                                                                            
+                                                                            return (
+                                                                                <div key={promo.id} className="p-3 bg-gray-50 dark:bg-gray-900 rounded border text-sm">
+                                                                                    <p className="font-medium text-gray-900 dark:text-gray-100">
+                                                                                        {promo.nama_promo}
+                                                                                    </p>
+                                                                                    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                                                                        <span>
+                                                                                            {promo.jenis === 'percent' ? `${promo.diskon}%` : formatRupiah(promo.diskon)}
+                                                                                        </span>
+                                                                                        <span>•</span>
+                                                                                        <span>Hemat: {formatRupiah(discount)}</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })
                                                                     }
                                                                 </div>
                                                             </details>
                                                         )}
+
+                                                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                                                            <AlertCircle className="h-3 w-3" />
+                                                            Sistem otomatis memilih promo dengan nilai diskon terbesar
+                                                        </p>
                                                     </div>
                                                 );
                                             })()}
-
-                                            <p className="text-xs text-center text-gray-500 mt-2">
-                                                <AlertCircle className="h-3 w-3 inline mr-1" />
-                                                Sistem otomatis memilih semua diskon yang tersedia (kecuali point yang tetap ditukar manual)
-                                            </p>
                                         </div>
-                                            </div>
 
-                                            <Separator />
+                                        <Separator />
 
                                         {/* Points redemption (TETAP MANUAL) */}
                                         {selectedCustomer && selectedCustomer.is_member && selectedCustomer.poin > 0 && (

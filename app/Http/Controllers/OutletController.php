@@ -9,6 +9,10 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
 
+/**
+ * INSTRUKSI:
+ * Replace file ini ke: app/Http/Controllers/OutletController.php
+ */
 class OutletController extends Controller
 {
     use HasAuthorization;
@@ -47,11 +51,10 @@ class OutletController extends Controller
             'alamat' => 'required|string',
             'tlp' => 'required|string|max:20',
             'latitude' => 'nullable|numeric|between:-90,90',      
-            'longitude' => 'nullable|numeric|between:-180,180',   
-            'price_per_km' => 'nullable|integer|min:0',
+            'longitude' => 'nullable|numeric|between:-180,180',
         ]);
 
-            try {
+        try {
             Outlet::create($validated);
             return redirect()->back()->with('success', 'Outlet berhasil ditambahkan!');
         } catch (\Exception $e) {
@@ -71,8 +74,7 @@ class OutletController extends Controller
             'alamat' => 'required|string',
             'tlp' => 'required|string|max:20',
             'latitude' => 'nullable|numeric|between:-90,90',      
-            'longitude' => 'nullable|numeric|between:-180,180',   
-            'price_per_km' => 'nullable|integer|min:0',           
+            'longitude' => 'nullable|numeric|between:-180,180',
         ]);
 
         try {

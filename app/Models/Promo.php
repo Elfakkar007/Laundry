@@ -24,6 +24,8 @@ class Promo extends Model
         'tanggal_selesai',
         'minimal_transaksi',
         'keterangan',
+        'is_stackable', // NEW: Bisa dikombinasikan dengan promo lain
+        'priority', // NEW: Prioritas urutan penerapan (semakin kecil = lebih prioritas)
     ];
 
     protected function casts(): array
@@ -32,9 +34,11 @@ class Promo extends Model
             'diskon' => 'decimal:2',
             'syarat_member_only' => 'boolean',
             'is_active' => 'boolean',
+            'is_stackable' => 'boolean',
             'tanggal_mulai' => 'date',
             'tanggal_selesai' => 'date',
             'minimal_transaksi' => 'decimal:2',
+            'priority' => 'integer',
         ];
     }
 
@@ -65,6 +69,14 @@ class Promo extends Model
     }
 
     /**
+     * Scope untuk filter promo yang stackable
+     */
+    public function scopeStackable($query)
+    {
+        return $query->where('is_stackable', true);
+    }
+
+    /**
      * Check if promo is currently valid
      */
     public function isValid(): bool
@@ -89,7 +101,7 @@ class Promo extends Model
     /**
      * Check if customer can use this promo
      */
-    public function canBeUsedBy(?Customer $customer): bool
+    public function canBeUsedBy(?Customer $customer, float $subtotal = 0): bool
     {
         if (!$this->isValid()) {
             return false;
@@ -99,16 +111,21 @@ class Promo extends Model
             return false;
         }
 
+        // Check minimal transaksi
+        if ($this->minimal_transaksi && $subtotal < $this->minimal_transaksi) {
+            return false;
+        }
+
         return true;
     }
 
     /**
      * Calculate discount amount based on subtotal
+     * NEW: Accepts current subtotal (after previous discounts applied)
      */
     public function calculateDiscount(float $subtotal): float
     {
-        // Check minimal transaksi
-        if ($this->minimal_transaksi && $subtotal < $this->minimal_transaksi) {
+        if ($subtotal <= 0) {
             return 0;
         }
 
@@ -145,5 +162,68 @@ class Promo extends Model
         }
 
         return 'Aktif';
+    }
+
+    /**
+     * NEW: Get all applicable promos for a customer and subtotal
+     * Returns promos ordered by priority
+     */
+    public static function getApplicablePromos(?Customer $customer, float $subtotal): \Illuminate\Support\Collection
+    {
+        return static::active()
+            ->valid()
+            ->stackable()
+            ->orderBy('priority', 'asc')
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->filter(function ($promo) use ($customer, $subtotal) {
+                return $promo->canBeUsedBy($customer, $subtotal);
+            });
+    }
+
+    /**
+     * NEW: Calculate multiple stacked discounts
+     * Returns array with discount details
+     */
+    public static function calculateStackedDiscounts(?Customer $customer, float $baseAmount): array
+    {
+        $applicablePromos = static::getApplicablePromos($customer, $baseAmount);
+        
+        $discounts = [];
+        $remainingAmount = $baseAmount;
+        $totalDiscount = 0;
+
+        foreach ($applicablePromos as $promo) {
+            if ($remainingAmount <= 0) {
+                break;
+            }
+
+            // Check if promo is still applicable with current remaining amount
+            if (!$promo->canBeUsedBy($customer, $remainingAmount)) {
+                continue;
+            }
+
+            $discount = $promo->calculateDiscount($remainingAmount);
+            
+            if ($discount > 0) {
+                $discounts[] = [
+                    'id' => $promo->id,
+                    'nama' => $promo->nama_promo,
+                    'jenis' => $promo->jenis,
+                    'nilai' => $promo->diskon,
+                    'amount' => $discount,
+                    'is_member_only' => $promo->syarat_member_only,
+                ];
+
+                $totalDiscount += $discount;
+                $remainingAmount -= $discount;
+            }
+        }
+
+        return [
+            'discounts' => $discounts,
+            'total_discount' => $totalDiscount,
+            'final_amount' => max(0, $baseAmount - $totalDiscount),
+        ];
     }
 }
