@@ -55,6 +55,7 @@ class PaketController extends Controller
             'id_package_type' => 'required|exists:package_types,id',
             'nama_paket' => 'required|string|max:255',
             'harga' => 'required|numeric|min:1',
+            'satuan' => 'required|string|max:20',
         ], [
             'harga.min' => 'Harga minimal Rp 1',
         ]);
@@ -78,6 +79,7 @@ class PaketController extends Controller
             'id_package_type' => 'required|exists:package_types,id',
             'nama_paket' => 'required|string|max:255',
             'harga' => 'required|numeric|min:1',
+            'satuan' => 'required|string|max:20',
         ], [
             'harga.min' => 'Harga minimal Rp 1',
         ]);

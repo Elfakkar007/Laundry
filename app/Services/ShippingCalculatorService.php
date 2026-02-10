@@ -68,13 +68,24 @@ class ShippingCalculatorService
             $customerLng
         );
 
-        $cost = $this->calculateCost($distance, $outlet->price_per_km);
+        // Fetch global shipping rate from Surcharge table
+        $shipping = \App\Models\Surcharge::where('is_active', true)
+            ->where('category', 'shipping')
+            ->where('calculation_type', 'distance')
+            ->first();
+
+        if (!$shipping) {
+            throw new \Exception('Pengaturan ongkir (surcharge category shipping) tidak ditemukan atau tidak aktif');
+        }
+
+        $cost = $this->calculateCost($distance, (int)$shipping->nominal);
 
         return [
             'distance' => $distance,
             'cost' => $cost,
             'outlet' => $outlet,
-            'price_per_km' => $outlet->price_per_km
+            'price_per_km' => (int)$shipping->nominal,
+            'shipping_name' => $shipping->nama
         ];
     }
 }

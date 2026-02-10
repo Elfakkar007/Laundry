@@ -5,10 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class Promo extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
 
     // Constants untuk Jenis
     public const JENIS_FIXED = 'fixed';
@@ -40,6 +42,14 @@ class Promo extends Model
             'minimal_transaksi' => 'decimal:2',
             'priority' => 'integer',
         ];
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['nama_promo', 'diskon', 'jenis', 'is_active', 'tanggal_mulai', 'tanggal_selesai', 'minimal_transaksi'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
     }
 
     /**

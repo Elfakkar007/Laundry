@@ -26,7 +26,8 @@ import {
     ChevronDown,
     Sparkles,
     Clock,
-    BarChart3
+    BarChart3,
+    Shield
 } from 'lucide-react';
 
 export default function AuthenticatedLayout({ header, children }) {
@@ -155,6 +156,14 @@ export default function AuthenticatedLayout({ header, children }) {
             icon: Settings,
             active: route().current('settings.*'),
             show: isAdmin && hasPermission('setting.view'),
+        },
+        // ADMIN/OWNER ONLY: Activity Log
+        {
+            name: 'Activity Log',
+            href: route('activity-log.index'),
+            icon: Shield,
+            active: route().current('activity-log.*'),
+            show: (isAdmin || hasRole('owner')) && hasPermission('activity-log.view'),
         },
     ];
 

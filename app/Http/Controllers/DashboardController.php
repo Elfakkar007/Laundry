@@ -24,8 +24,10 @@ class DashboardController extends Controller
         
         $transaksiQuery = Transaksi::query();
         
-        if ($user->id_outlet !== null) {
-            // User terikat ke outlet tertentu -> filter
+        $isGlobal = $user->hasRole(['admin', 'owner']);
+        
+        if (!$isGlobal && $user->id_outlet !== null) {
+            // Kasir/User terikat ke outlet tertentu -> filter
             $transaksiQuery->where('id_outlet', $user->id_outlet);
         }
         
@@ -68,8 +70,8 @@ class DashboardController extends Controller
                 'jumlah_member' => $jumlahMember,
             ],
             'recent_transaksi' => $recentTransaksi,
-            'scoped_to_outlet' => $user->id_outlet !== null,
-            'outlet_name' => $user->outlet?->nama,
+            'scoped_to_outlet' => !$isGlobal && $user->id_outlet !== null,
+            'outlet_name' => $isGlobal ? 'Semua Outlet' : $user->outlet?->nama,
         ]);
     }
 }

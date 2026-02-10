@@ -5,10 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class Outlet extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
 
     protected $fillable = [
         'nama',
@@ -16,7 +18,6 @@ class Outlet extends Model
         'tlp',
         'latitude',      
         'longitude',     
-        'price_per_km', 
     ];
 
     protected function casts(): array
@@ -24,8 +25,15 @@ class Outlet extends Model
         return [
             'latitude' => 'decimal:8',
             'longitude' => 'decimal:8',
-            'price_per_km' => 'integer',
         ];
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['nama', 'alamat', 'tlp'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
     }
 
     public function hasLocation(): bool

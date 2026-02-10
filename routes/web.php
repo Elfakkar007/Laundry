@@ -276,5 +276,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // ========================================
     Route::get('/laporan', [\App\Http\Controllers\LaporanController::class, 'index'])
         ->name('laporan.index');
+
+    // ========================================
+    // ACTIVITY LOG (Admin/Owner Only)
+    // ========================================
+    Route::middleware(['role:admin|owner'])->prefix('activity-log')->name('activity-log.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\ActivityLogController::class, 'index'])
+            ->middleware('permission:activity-log.view')
+            ->name('index');
+        
+        Route::get('/export', [\App\Http\Controllers\ActivityLogController::class, 'export'])
+            ->middleware('permission:activity-log.view')
+            ->name('export');
+    });
         
     require __DIR__.'/auth.php';

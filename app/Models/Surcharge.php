@@ -4,10 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class Surcharge extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
 
     // Constants untuk Calculation Type
     public const TYPE_FIXED = 'fixed';
@@ -35,6 +37,14 @@ class Surcharge extends Model
             'min_order_total' => 'decimal:2',
             'is_active' => 'boolean',
         ];
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['nama', 'nominal', 'calculation_type', 'category', 'is_active'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
     }
 
     /**

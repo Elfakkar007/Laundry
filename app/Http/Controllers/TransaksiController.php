@@ -39,9 +39,11 @@ class TransaksiController extends Controller
 
         $transaksiQuery = Transaksi::query()
             ->with(['customer', 'outlet', 'user']);
-
-        // DATA SCOPING: Kasir hanya lihat transaksi outlet mereka
-        if ($user->id_outlet !== null) {
+            
+        $isGlobal = $user->hasRole(['admin', 'owner']);
+        
+        // DATA SCOPING: Kasir hanya lihat transaksi outlet mereka. Admin/Owner lihat semua.
+        if (!$isGlobal && $user->id_outlet !== null) {
             $transaksiQuery->where('id_outlet', $user->id_outlet);
         }
 
@@ -87,8 +89,8 @@ class TransaksiController extends Controller
         return Inertia::render('Transaksi/Index', [
             'transaksis' => $transaksis,
             'filters' => $request->only(['search', 'status_filter', 'payment_filter', 'date_from', 'date_to']),
-            'scoped_to_outlet' => $user->id_outlet !== null,
-            'outlet_name' => $user->outlet?->nama,
+            'scoped_to_outlet' => !$isGlobal && $user->id_outlet !== null,
+            'outlet_name' => $isGlobal ? 'Semua Outlet' : $user->outlet?->nama,
         ]);
     }
 
@@ -102,20 +104,23 @@ class TransaksiController extends Controller
 
         $user = $request->user();
 
+        // Determine user capabilities
+        $isGlobal = $user->hasRole(['admin', 'owner']);
+
         // Determine selected outlet
-        if ($user->id_outlet !== null) {
+        if (!$isGlobal && $user->id_outlet !== null) {
             $selectedOutletId = $user->id_outlet;
         } else {
             $selectedOutletId = $request->input('outlet_id');
 
             if (!$selectedOutletId) {
-                $firstOutlet = Outlet::orderBy('nama')->first();
-                $selectedOutletId = $firstOutlet ? $firstOutlet->id : null;
+                // Default to user's assigned outlet if exists, otherwise first outlet
+                $selectedOutletId = $user->id_outlet ?: (Outlet::orderBy('nama')->first()?->id);
             }
         }
 
-        // Get outlets for admin
-        $outlets = $user->id_outlet === null
+        // Get outlets for switcher (only for non-restricted users)
+        $outlets = $isGlobal
             ? Outlet::select('id', 'nama')->orderBy('nama')->get()
             : null;
 
@@ -173,8 +178,8 @@ class TransaksiController extends Controller
             'promos' => $promos,
             'settings' => $settings,
             'invoiceCode' => $invoiceCode,
-            'selectedOutletId' => $selectedOutletId,
-            'isKasir' => $user->id_outlet !== null,
+            'selectedOutletId' => (int) $selectedOutletId,
+            'isKasir' => !$isGlobal && $user->id_outlet !== null,
             'userOutlet' => $user->outlet,
             'userName' => $user->nama,
         ]);
@@ -188,8 +193,9 @@ class TransaksiController extends Controller
     {
         $this->authorizePermission('transaksi.create');
 
-        if ($request->user()->id_outlet !== null) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+        $user = $request->user();
+        if (!$user->hasRole(['admin', 'owner'])) {
+            return response()->json(['error' => 'Unauthorized. Only Admin/Owner can switch outlets.'], 403);
         }
 
         $pakets = Paket::where('id_outlet', $outletId)
@@ -216,10 +222,9 @@ class TransaksiController extends Controller
         
         $user = auth()->user();
         
-        // Outlet scoping for kasir
-        // Only check if user has an outlet assigned (kasir)
-        // Admin (id_outlet = null) can access all transactions
-        if ($user->id_outlet !== null && $transaksi->id_outlet !== $user->id_outlet) {
+        $isGlobal = $user->hasRole(['admin', 'owner']);
+        
+        if (!$isGlobal && $user->id_outlet !== null && $transaksi->id_outlet !== $user->id_outlet) {
             abort(403, 'Anda tidak memiliki akses ke transaksi ini.');
         }
         
@@ -249,8 +254,10 @@ class TransaksiController extends Controller
         
         $user = auth()->user();
         
+        $isGlobal = $user->hasRole(['admin', 'owner']);
+        
         // Outlet scoping for kasir
-        if ($user->id_outlet !== null && $transaksi->id_outlet !== $user->id_outlet) {
+        if (!$isGlobal && $user->id_outlet !== null && $transaksi->id_outlet !== $user->id_outlet) {
             abort(403, 'Anda tidak memiliki akses ke transaksi ini.');
         }
         
@@ -291,8 +298,10 @@ class TransaksiController extends Controller
         
         $user = auth()->user();
         
+        $isGlobal = $user->hasRole(['admin', 'owner']);
+        
         // Outlet scoping for kasir
-        if ($user->id_outlet !== null && $transaksi->id_outlet !== $user->id_outlet) {
+        if (!$isGlobal && $user->id_outlet !== null && $transaksi->id_outlet !== $user->id_outlet) {
             abort(403, 'Anda tidak memiliki akses ke transaksi ini.');
         }
         
@@ -410,8 +419,11 @@ class TransaksiController extends Controller
             'items.min' => 'Minimal harus ada 1 item',
         ]);
 
+        // Determine user capabilities
+        $isGlobal = $user->hasRole(['admin', 'owner']);
+
         // Outlet scoping for kasir
-        if ($user->id_outlet !== null && $validated['id_outlet'] != $user->id_outlet) {
+        if (!$isGlobal && $user->id_outlet !== null && $validated['id_outlet'] != $user->id_outlet) {
             abort(403, 'Unauthorized outlet access');
         }
 

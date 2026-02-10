@@ -6,10 +6,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class Transaksi extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
 
     // Constants untuk Status
     public const STATUS_BARU = 'baru';
@@ -66,6 +68,17 @@ class Transaksi extends Model
             'total_bayar' => 'decimal:2',
             'kembalian' => 'decimal:2',
         ];
+    }
+
+    /**
+     * Configure activity logging
+     */
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['status', 'dibayar', 'total_akhir', 'biaya_tambahan', 'diskon', 'pajak', 'tgl_bayar'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
     }
 
     /**

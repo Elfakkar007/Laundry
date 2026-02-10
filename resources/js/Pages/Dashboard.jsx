@@ -2,7 +2,8 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
 import { Badge } from '@/Components/ui/badge';
-import { DollarSign, FileText, Users, TrendingUp, Store, Clock } from 'lucide-react';
+import { Alert, AlertDescription } from '@/Components/ui/alert';
+import { DollarSign, FileText, Users, TrendingUp, Store, Clock, Info } from 'lucide-react';
 
 export default function Dashboard({ stats, recent_transaksi, scoped_to_outlet, outlet_name }) {
     const formatRupiah = (amount) => {
@@ -24,7 +25,7 @@ export default function Dashboard({ stats, recent_transaksi, scoped_to_outlet, o
     };
 
     const getPaymentBadge = (dibayar) => {
-        return dibayar === 'dibayar' 
+        return dibayar === 'dibayar'
             ? { variant: 'default', className: 'bg-green-600', text: 'Lunas' }
             : { variant: 'outline', className: 'border-red-500 text-red-600', text: 'Belum Bayar' };
     };
@@ -47,18 +48,15 @@ export default function Dashboard({ stats, recent_transaksi, scoped_to_outlet, o
 
             <div className="py-12">
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
-                    {/* Scope Info Banner */}
-                    {scoped_to_outlet && (
-                        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-900/20">
-                            <div className="flex items-center gap-2">
-                                <Store className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                                <p className="text-sm text-blue-800 dark:text-blue-200">
-                                    <span className="font-semibold">Data Scope: </span>
-                                    Menampilkan data khusus outlet <span className="font-semibold">{outlet_name}</span>
-                                </p>
-                            </div>
-                        </div>
-                    )}
+                    {/* Scoping Alert */}
+                    <Alert className="mb-6 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                        <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                        <AlertDescription className="text-blue-700 dark:text-blue-300">
+                            <strong>Data Scope:</strong> {scoped_to_outlet
+                                ? `Menampilkan data khusus outlet ${outlet_name}`
+                                : 'Menampilkan data global dari seluruh outlet (Admin/Owner Mode)'}
+                        </AlertDescription>
+                    </Alert>
 
                     {/* Stats Cards */}
                     <div className="grid gap-6 md:grid-cols-3 mb-8">

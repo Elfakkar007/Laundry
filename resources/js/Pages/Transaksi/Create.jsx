@@ -325,15 +325,22 @@ export default function TransaksiCreate({
         setLoadingOutletData(true);
         try {
             const response = await fetch(route('transaksi.outlet-data', outletId));
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || errData.message || 'Gagal mengambil data');
+            }
+
             const respData = await response.json();
 
             setCurrentOutletId(parseInt(outletId));
-            setCurrentPakets(respData.pakets);
+            setCurrentPakets(respData.pakets || []);
             setCurrentInvoiceCode(respData.invoiceCode);
             setItems([]);
             toast.success('Outlet berhasil diganti');
         } catch (error) {
-            toast.error('Gagal mengambil data outlet');
+            console.error('Outlet change error:', error);
+            toast.error(error.message || 'Gagal mengambil data outlet');
         } finally {
             setLoadingOutletData(false);
         }
@@ -928,7 +935,7 @@ export default function TransaksiCreate({
                                             <Store className="h-5 w-5 text-blue-600" />
                                             <div>
                                                 <p className="text-xs text-gray-500">Outlet</p>
-                                                <p className="font-bold text-gray-900 dark:text-gray-100">{userOutlet.nama}</p>
+                                                <p className="font-bold text-gray-900 dark:text-gray-100">{userOutlet?.nama || 'Global'}</p>
                                             </div>
                                         </div>
                                         <Separator orientation="vertical" className="h-10" />
@@ -946,37 +953,43 @@ export default function TransaksiCreate({
                                     </div>
                                 </div>
                             ) : (
-                                <div className="grid md:grid-cols-2 gap-4">
-                                    <div>
-                                        <Label htmlFor="outlet">Outlet *</Label>
-                                        <Select
-                                            value={currentOutletId?.toString() || 'none'}
-                                            onValueChange={(value) => value !== 'none' && handleOutletChange(parseInt(value))}
-                                            disabled={loadingOutletData}
-                                        >
-                                            <SelectTrigger className={!currentOutletId ? 'border-red-500' : ''}>
-                                                <SelectValue placeholder="Pilih Outlet" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="none">-- Pilih Outlet --</SelectItem>
-                                                {outlets?.map((outlet) => (
-                                                    <SelectItem key={outlet.id} value={outlet.id.toString()}>{outlet.nama}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                <div className="space-y-4">
+                                    <div className="grid md:grid-cols-2 gap-4">
+                                        <div>
+                                            <Label htmlFor="outlet">Outlet *</Label>
+                                            <Select
+                                                value={currentOutletId?.toString() || 'none'}
+                                                onValueChange={(value) => value !== 'none' && handleOutletChange(parseInt(value))}
+                                                disabled={loadingOutletData}
+                                            >
+                                                <SelectTrigger className={!currentOutletId ? 'border-red-500' : ''}>
+                                                    <SelectValue placeholder="Pilih Outlet" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="none">-- Pilih Outlet --</SelectItem>
+                                                    {outlets?.map((outlet) => (
+                                                        <SelectItem key={outlet.id} value={outlet.id.toString()}>{outlet.nama}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="flex items-end">
+                                            {currentInvoiceCode ? (
+                                                <div className="flex-1 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 rounded-lg border border-blue-200 dark:border-blue-900">
+                                                    <p className="text-xs text-gray-500">Invoice Code</p>
+                                                    <p className="text-xl font-bold text-blue-600">{currentInvoiceCode}</p>
+                                                </div>
+                                            ) : (
+                                                <div className="flex-1 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700">
+                                                    <p className="text-xs text-gray-500">Invoice Code</p>
+                                                    <p className="text-sm text-gray-400">Pilih outlet terlebih dahulu</p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="flex items-end">
-                                        {currentInvoiceCode ? (
-                                            <div className="flex-1 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 rounded-lg border border-blue-200 dark:border-blue-900">
-                                                <p className="text-xs text-gray-500">Invoice Code</p>
-                                                <p className="text-xl font-bold text-blue-600">{currentInvoiceCode}</p>
-                                            </div>
-                                        ) : (
-                                            <div className="flex-1 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700">
-                                                <p className="text-xs text-gray-500">Invoice Code</p>
-                                                <p className="text-sm text-gray-400">Pilih outlet terlebih dahulu</p>
-                                            </div>
-                                        )}
+                                    <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/10 rounded-md text-blue-800 dark:text-blue-300 border border-blue-100 dark:border-blue-800">
+                                        <User className="h-4 w-4" />
+                                        <p className="text-xs font-medium">Memproses transaksi sebagai <strong>{userName}</strong> (Admin/Owner Mode)</p>
                                     </div>
                                 </div>
                             )}
@@ -1132,14 +1145,14 @@ export default function TransaksiCreate({
                                                                         <SelectItem value="none">-- Pilih Paket --</SelectItem>
                                                                         {currentPakets.map((paket) => (
                                                                             <SelectItem key={paket.id} value={paket.id.toString()}>
-                                                                                {paket.nama_paket} - {formatRupiah(paket.harga)}
+                                                                                {paket.nama_paket} - {formatRupiah(paket.harga)}/{paket.satuan}
                                                                             </SelectItem>
                                                                         ))}
                                                                     </SelectContent>
                                                                 </Select>
                                                             </div>
                                                             <div>
-                                                                <Label>Qty (kg) *</Label>
+                                                                <Label>Qty ({selectedPaket?.satuan || 'kg'}) *</Label>
                                                                 <Input type="number" step="0.01" min="0.01" value={item.qty} onChange={(e) => updateItem(item.id, 'qty', e.target.value)} />
                                                             </div>
                                                             <div>

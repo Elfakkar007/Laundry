@@ -359,7 +359,7 @@ export default function TransaksiShow({ transaksi, allowedNextStatuses, isDelive
                                                                 {detail.paket?.package_type?.nama || '-'}
                                                             </td>
                                                             <td className="px-4 py-4 text-right font-medium text-gray-900 dark:text-gray-100">
-                                                                {qty} kg
+                                                                {qty} {detail.paket?.satuan || 'kg'}
                                                             </td>
                                                             <td className="px-4 py-4 text-right text-sm text-gray-600 dark:text-gray-400">
                                                                 {formatRupiah(harga)}
@@ -737,7 +737,7 @@ export default function TransaksiShow({ transaksi, allowedNextStatuses, isDelive
                         {transaksi.detail_transaksis?.map((detail, idx) => (
                             <tr key={idx}>
                                 <td className="pt-1 pr-1">{detail.paket?.nama_paket}</td>
-                                <td className="text-center pt-1">{parseFloat(detail.qty)}</td>
+                                <td className="text-center pt-1">{parseFloat(detail.qty)} {detail.paket?.satuan || 'kg'}</td>
                                 <td className="text-right pt-1">{formatRupiah(detail.paket?.harga).replace('Rp', '').replace(',00', '')}</td>
                                 <td className="text-right pt-1">{formatRupiah(detail.qty * detail.paket?.harga).replace('Rp', '').replace(',00', '')}</td>
                             </tr>

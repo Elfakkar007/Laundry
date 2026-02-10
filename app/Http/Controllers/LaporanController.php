@@ -23,13 +23,10 @@ class LaporanController extends Controller
         $startDate = $request->input('date_from') ?: Carbon::now()->startOfMonth()->format('Y-m-d');
         $endDate = $request->input('date_to') ?: Carbon::now()->endOfMonth()->format('Y-m-d');
         
-        // 2. Outlet Scoping Logic
-        // If user is Admin (id_outlet is null), they can see all or filter by specific outlet.
-        // If user is Kasir (has id_outlet), they are locked to that outlet.
-        $userOutletId = $user->id_outlet;
-        
         // Determine effective outlet filter
-        $selectedOutletId = $userOutletId ? $userOutletId : $request->input('outlet_id');
+        $isGlobal = $user->hasRole(['admin', 'owner']);
+        $userOutletId = $user->id_outlet;
+        $selectedOutletId = (!$isGlobal && $userOutletId) ? $userOutletId : $request->input('outlet_id');
 
         // 3. Base Query Builder
         $query = Transaksi::query()
@@ -74,7 +71,7 @@ class LaporanController extends Controller
             ->get();
 
         // 7. Available Outlets (For Admin Dropdown)
-        $outlets = $userOutletId ? [] : Outlet::select('id', 'nama')->get();
+        $outlets = $isGlobal ? Outlet::select('id', 'nama')->get() : [];
 
         return Inertia::render('Laporan/Index', [
             'filters' => [

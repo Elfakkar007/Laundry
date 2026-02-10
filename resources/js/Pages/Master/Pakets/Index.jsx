@@ -40,6 +40,7 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
         id_package_type: '',
         nama_paket: '',
         harga: '',
+        satuan: 'kg',
     });
 
     useEffect(() => {
@@ -64,6 +65,7 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
             id_package_type: paket.id_package_type.toString(),
             nama_paket: paket.nama_paket,
             harga: paket.harga,
+            satuan: paket.satuan || 'kg',
         });
         setIsDialogOpen(true);
     };
@@ -144,7 +146,7 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
                                         <Search className="h-4 w-4" />
                                     </Button>
                                 </form>
-                                
+
                                 <Button onClick={openCreateDialog}>
                                     <Plus className="mr-2 h-4 w-4" />
                                     Tambah Paket
@@ -160,6 +162,7 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
                                             <TableHead>Jenis</TableHead>
                                             <TableHead>Outlet</TableHead>
                                             <TableHead className="text-right">Harga</TableHead>
+                                            <TableHead className="text-center">Satuan</TableHead>
                                             <TableHead className="text-center">Status</TableHead>
                                             <TableHead className="text-right w-[150px]">Aksi</TableHead>
                                         </TableRow>
@@ -182,10 +185,13 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
                                                         {formatRupiah(paket.harga)}
                                                     </TableCell>
                                                     <TableCell className="text-center">
-                                                        <Badge 
+                                                        <Badge variant="outline">{paket.satuan}</Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Badge
                                                             variant={paket.is_active ? "success" : "secondary"}
-                                                            className={paket.is_active 
-                                                                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" 
+                                                            className={paket.is_active
+                                                                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                                                                 : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
                                                             }
                                                         >
@@ -255,7 +261,7 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
                             {editingPaket ? 'Edit Paket' : 'Tambah Paket Baru'}
                         </DialogTitle>
                     </DialogHeader>
-                    
+
                     <form onSubmit={handleSubmit}>
                         <div className="space-y-4">
                             <div>
@@ -330,6 +336,28 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
                                 />
                                 {errors.harga && (
                                     <p className="mt-1 text-sm text-red-500">{errors.harga}</p>
+                                )}
+                            </div>
+
+                            <div>
+                                <Label htmlFor="satuan">Satuan *</Label>
+                                <Select
+                                    value={data.satuan}
+                                    onValueChange={(value) => setData('satuan', value)}
+                                >
+                                    <SelectTrigger className={errors.satuan ? 'border-red-500' : ''}>
+                                        <SelectValue placeholder="Pilih Satuan" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="kg">kg (Kilogram)</SelectItem>
+                                        <SelectItem value="pcs">pcs (Potong/Biji)</SelectItem>
+                                        <SelectItem value="meter">meter (Meter)</SelectItem>
+                                        <SelectItem value="m2">m2 (Meter Persegi)</SelectItem>
+                                        <SelectItem value="liter">liter (Liter)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {errors.satuan && (
+                                    <p className="mt-1 text-sm text-red-500">{errors.satuan}</p>
                                 )}
                             </div>
                         </div>
