@@ -7,8 +7,8 @@ import { Badge } from '@/Components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { toast } from 'sonner';
-import { 
-    Plus, Search, FileText, Store, Calendar, Eye, Trash2, 
+import {
+    Plus, Search, FileText, Store, Calendar, Eye, Trash2,
     DollarSign, CreditCard, Clock, CheckCircle, AlertCircle
 } from 'lucide-react';
 
@@ -73,10 +73,13 @@ export default function TransaksiIndex({ transaksis, filters, scoped_to_outlet, 
             proses: { className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400', icon: Clock },
             selesai: { className: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400', icon: CheckCircle },
             diambil: { className: 'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400', icon: CheckCircle },
+            dikirim: { className: 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400', icon: Clock },
+            diterima: { className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400', icon: CheckCircle },
+            batal: { className: 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400', icon: AlertCircle },
         };
         const config = variants[status] || variants.baru;
         const Icon = config.icon;
-        
+
         return (
             <Badge variant="outline" className={`flex items-center gap-1 w-fit ${config.className}`}>
                 <Icon className="h-3 w-3" />
@@ -168,6 +171,9 @@ export default function TransaksiIndex({ transaksis, filters, scoped_to_outlet, 
                                                 <SelectItem value="proses">Proses</SelectItem>
                                                 <SelectItem value="selesai">Selesai</SelectItem>
                                                 <SelectItem value="diambil">Diambil</SelectItem>
+                                                <SelectItem value="dikirim">Dikirim</SelectItem>
+                                                <SelectItem value="diterima">Diterima</SelectItem>
+                                                <SelectItem value="batal">Dibatalkan</SelectItem>
                                             </SelectContent>
                                         </Select>
 

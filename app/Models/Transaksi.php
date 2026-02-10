@@ -16,6 +16,9 @@ class Transaksi extends Model
     public const STATUS_PROSES = 'proses';
     public const STATUS_SELESAI = 'selesai';
     public const STATUS_DIAMBIL = 'diambil';
+    public const STATUS_DIKIRIM = 'dikirim';
+    public const STATUS_DITERIMA = 'diterima';
+    public const STATUS_BATAL = 'batal';
 
     // Constants untuk Dibayar
     public const DIBAYAR_BELUM = 'belum_dibayar';
@@ -32,9 +35,17 @@ class Transaksi extends Model
         'diskon',
         'diskon_detail',
         'pajak',
+        'total_akhir',
         'status',
         'dibayar',
         'id_user',
+        // New Shipping Fields
+        'customer_lat',
+        'customer_lng',
+        'alamat_lengkap',
+        'catatan_lokasi',
+        'distance_km',
+        'shipping_cost',
     ];
 
     protected function casts(): array
@@ -47,6 +58,9 @@ class Transaksi extends Model
             'diskon' => 'decimal:2',
             'diskon_detail' => 'array',
             'pajak' => 'decimal:2',
+            'total_akhir' => 'decimal:2',
+            'shipping_cost' => 'decimal:2',
+            'distance_km' => 'decimal:2',
         ];
     }
 
@@ -92,7 +106,64 @@ class Transaksi extends Model
             self::STATUS_PROSES,
             self::STATUS_SELESAI,
             self::STATUS_DIAMBIL,
+            self::STATUS_DIKIRIM,
+            self::STATUS_DITERIMA,
+            self::STATUS_BATAL,
         ];
+    }
+
+    /**
+     * Check if this transaction is a delivery order
+     */
+    public function isDelivery(): bool
+    {
+        return $this->shipping_id !== null;
+    }
+
+    /**
+     * Get allowed next statuses based on current status and delivery type
+     */
+    public function getAllowedNextStatuses(): array
+    {
+        $isDelivery = $this->isDelivery();
+        
+        switch ($this->status) {
+            case self::STATUS_BARU:
+                return [self::STATUS_PROSES, self::STATUS_BATAL];
+            
+            case self::STATUS_PROSES:
+                return [self::STATUS_SELESAI, self::STATUS_BATAL];
+            
+            case self::STATUS_SELESAI:
+                if ($isDelivery) {
+                    return [self::STATUS_DIKIRIM];
+                }
+                return [self::STATUS_DIAMBIL];
+            
+            case self::STATUS_DIKIRIM:
+                return [self::STATUS_DITERIMA];
+            
+            default:
+                // Terminal states: diambil, diterima, batal
+                return [];
+        }
+    }
+
+    /**
+     * Get status label with icon
+     */
+    public function getStatusLabelAttribute(): string
+    {
+        return match($this->status) {
+            self::STATUS_BARU => '🆕 Baru',
+            self::STATUS_PROSES => '⚙️ Proses',
+            self::STATUS_SELESAI => '✅ Selesai',
+            self::STATUS_DIAMBIL => '📦 Diambil',
+            self::STATUS_DIKIRIM => '🚚 Dikirim',
+            self::STATUS_DITERIMA => '✅ Diterima',
+            self::STATUS_BATAL => '❌ Batal',
+            default => $this->status,
+        };
     }
 
     /**

@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('id_outlet')->constrained('outlets')->cascadeOnDelete();
             $table->string('kode_invoice')->unique();
-            $table->foreignId('id_member')->constrained('members')->cascadeOnDelete();
+            $table->foreignId('id_customer')->constrained('customers')->cascadeOnDelete();
             $table->timestamp('tgl');
             $table->timestamp('batas_waktu');
             $table->timestamp('tgl_bayar')->nullable();

@@ -179,19 +179,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('store');
         
         Route::get('/{transaksi}', [TransaksiController::class, 'show'])
-            ->middleware('permission:transaksi.detail')
+            ->middleware('permission:transaksi.view')
             ->name('show');
         
         Route::put('/{transaksi}/status', [TransaksiController::class, 'updateStatus'])
-            ->middleware('permission:transaksi.create')
+            ->middleware('permission:transaksi.edit')
             ->name('update-status');
         
-        Route::post('/{transaksi}/payment', [TransaksiController::class, 'processPayment'])
-            ->middleware('permission:transaksi.create')
-            ->name('process-payment');
+        Route::put('/{transaksi}/payment', [TransaksiController::class, 'updatePayment'])
+            ->middleware('permission:transaksi.edit')
+            ->name('update-payment');
         
         Route::delete('/{transaksi}', [TransaksiController::class, 'destroy'])
-            ->middleware('permission:transaksi.create')
+            ->middleware('permission:transaksi.delete')
             ->name('destroy');
     });
 

@@ -206,6 +206,158 @@ class TransaksiController extends Controller
         ]);
     }
 
+    // ------------------------------------------------------------------ show
+    /**
+     * Display transaction detail page
+     */
+    public function show(Transaksi $transaksi): Response
+    {
+        $this->authorizePermission('transaksi.view');
+        
+        $user = auth()->user();
+        
+        // Outlet scoping for kasir
+        // Only check if user has an outlet assigned (kasir)
+        // Admin (id_outlet = null) can access all transactions
+        if ($user->id_outlet !== null && $transaksi->id_outlet !== $user->id_outlet) {
+            abort(403, 'Anda tidak memiliki akses ke transaksi ini.');
+        }
+        
+        // Load all necessary relationships including paket for pricing
+        $transaksi->load([
+            'customer',
+            'outlet',
+            'user',
+            'detailTransaksis.paket.packageType',
+        ]);
+        
+        return Inertia::render('Transaksi/Show', [
+            'transaksi' => $transaksi,
+            'allowedNextStatuses' => $transaksi->getAllowedNextStatuses(),
+            'isDelivery' => $transaksi->isDelivery(),
+        ]);
+    }
+
+    // ------------------------------------------------------------------ updateStatus
+    /**
+     * Update transaction status with validation
+     */
+    public function updateStatus(Request $request, Transaksi $transaksi): RedirectResponse
+    {
+        $this->authorizePermission('transaksi.edit');
+        
+        $user = auth()->user();
+        
+        // Outlet scoping for kasir
+        if ($user->id_outlet !== null && $transaksi->id_outlet !== $user->id_outlet) {
+            abort(403, 'Anda tidak memiliki akses ke transaksi ini.');
+        }
+        
+        $validated = $request->validate([
+            'status' => 'required|in:' . implode(',', Transaksi::getAvailableStatuses()),
+            'notes' => 'nullable|string|max:500',
+        ]);
+        
+        // Check if status transition is allowed
+        $allowedStatuses = $transaksi->getAllowedNextStatuses();
+        if (!in_array($validated['status'], $allowedStatuses)) {
+            return back()->with('error', 'Transisi status tidak diizinkan. Status yang diizinkan: ' . implode(', ', $allowedStatuses));
+        }
+        
+        $oldStatus = $transaksi->status;
+        $transaksi->update(['status' => $validated['status']]);
+        
+        // Log activity
+        Log::info('Transaction status updated', [
+            'transaction_id' => $transaksi->id,
+            'invoice' => $transaksi->kode_invoice,
+            'old_status' => $oldStatus,
+            'new_status' => $validated['status'],
+            'updated_by' => $user->name,
+        ]);
+        
+        return back()->with('success', 'Status transaksi berhasil diupdate dari "' . $oldStatus . '" ke "' . $validated['status'] . '"');
+    }
+
+    // ------------------------------------------------------------------ updatePayment
+    /**
+     * Update payment status
+     */
+    public function updatePayment(Request $request, Transaksi $transaksi): RedirectResponse
+    {
+        $this->authorizePermission('transaksi.edit');
+        
+        $user = auth()->user();
+        
+        // Outlet scoping for kasir
+        if ($user->id_outlet !== null && $transaksi->id_outlet !== $user->id_outlet) {
+            abort(403, 'Anda tidak memiliki akses ke transaksi ini.');
+        }
+        
+        $validated = $request->validate([
+            'dibayar' => 'required|in:' . implode(',', Transaksi::getAvailablePaymentStatuses()),
+        ]);
+        
+        DB::beginTransaction();
+        try {
+            $oldDibayar = $transaksi->dibayar;
+            $isNewlyPaid = $validated['dibayar'] === Transaksi::DIBAYAR_LUNAS && 
+                           $oldDibayar !== Transaksi::DIBAYAR_LUNAS;
+            
+            // Update payment status
+            $transaksi->update([
+                'dibayar' => $validated['dibayar'],
+                'tgl_bayar' => $validated['dibayar'] === Transaksi::DIBAYAR_LUNAS ? now() : null,
+            ]);
+            
+            // Award points if newly paid and customer is member
+            if ($isNewlyPaid && $transaksi->customer && $transaksi->customer->is_member) {
+                $pointsEnabled = Setting::getValue('points_enabled', true);
+                
+                if ($pointsEnabled) {
+                    // Calculate points from total_akhir
+                    $earnedPoints = Customer::calculatePointsFromAmount($transaksi->total_akhir);
+                    
+                    if ($earnedPoints > 0) {
+                        $transaksi->customer->addPoints(
+                            $earnedPoints,
+                            \App\Models\PointHistory::TYPE_EARN,
+                            [
+                                'transaction_amount' => $transaksi->total_akhir,
+                                'reference_type' => 'App\Models\Transaksi',
+                                'reference_id' => $transaksi->id,
+                                'notes' => 'Poin dari transaksi ' . $transaksi->kode_invoice,
+                                'created_by' => $user->id,
+                            ]
+                        );
+                        
+                        Log::info('Points awarded for transaction payment', [
+                            'transaction_id' => $transaksi->id,
+                            'customer_id' => $transaksi->customer->id,
+                            'points' => $earnedPoints,
+                        ]);
+                    }
+                }
+            }
+            
+            DB::commit();
+            
+            $message = $isNewlyPaid 
+                ? 'Pembayaran berhasil dikonfirmasi. Transaksi telah lunas.' 
+                : 'Status pembayaran berhasil diupdate.';
+            
+            return back()->with('success', $message);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to update payment status', [
+                'transaction_id' => $transaksi->id,
+                'error' => $e->getMessage(),
+            ]);
+            return back()->with('error', 'Gagal update status pembayaran: ' . $e->getMessage());
+        }
+    }
+
     // ------------------------------------------------------------------ store
     /**
      * Store a newly created transaction.
@@ -230,10 +382,22 @@ class TransaksiController extends Controller
             'surcharge_distances' => 'nullable|array',
             'surcharge_distances.*' => 'numeric|min:0',
             'shipping_id' => 'nullable|exists:surcharges,id',
+            // Allow both naming conventions, prioritize distance_km
             'shipping_distance' => 'nullable|numeric|min:0',
+            'distance_km' => 'nullable|numeric|min:0',
+            
             'redeem_points' => 'nullable|integer|min:0',
             'payment_action' => 'required|in:bayar_lunas,bayar_nanti',
             'jumlah_bayar' => 'nullable|numeric|min:0',
+            
+            // New Location Fields
+            'customer_lat' => 'nullable|numeric|between:-90,90',
+            'customer_lng' => 'nullable|numeric|between:-180,180',
+            'alamat_lengkap' => 'nullable|string',
+            'catatan_lokasi' => 'nullable|string',
+            'shipping_cost' => 'nullable|numeric|min:0',
+            
+            // Legacy fields (optional support)
             'alamat_update' => 'nullable|string',
             'latitude_update' => 'nullable|numeric|between:-90,90',
             'longitude_update' => 'nullable|numeric|between:-180,180',
@@ -252,13 +416,16 @@ class TransaksiController extends Controller
         try {
             DB::beginTransaction();
 
+            // Determine effective distance for calculation
+            $shippingDistance = $validated['distance_km'] ?? $validated['shipping_distance'] ?? 0;
+
             // NEW: Calculate with automatic multiple promos
             $calculation = $this->calculateTransactionTotal(
                 $validated['items'],
                 $validated['surcharges'] ?? [],
                 $validated['surcharge_distances'] ?? [],
                 $validated['shipping_id'] ?? null,
-                $validated['shipping_distance'] ?? 0,
+                $shippingDistance, // Use the resolved distance
                 $validated['redeem_points'] ?? 0,
                 $customer
             );
@@ -269,7 +436,7 @@ class TransaksiController extends Controller
                 'location' => 'TransaksiController.php:store-after-calc',
                 'message' => 'Backend received and calculated',
                 'data' => [
-                    'shipping_distance_received' => $validated['shipping_distance'] ?? 0,
+                    'shipping_distance_received' => $shippingDistance, // Updated to use resolved distance
                     'shipping_cost_calc' => $calculation['shipping_cost'],
                     'total_akhir_calc' => $calculation['total_akhir'],
                     'biaya_tambahan_stored' => $calculation['total_surcharge'] + $calculation['shipping_cost'],
@@ -296,7 +463,7 @@ class TransaksiController extends Controller
                 'tgl' => $tgl,
                 'batas_waktu' => $batasWaktu,
                 'tgl_bayar' => $validated['payment_action'] === 'bayar_lunas' ? now() : null,
-                'biaya_tambahan' => $calculation['total_surcharge'] + $calculation['shipping_cost'],
+                'biaya_tambahan' => $calculation['total_surcharge'] + $calculation['shipping_cost'], // Stores ONLY pure shipping cost + surcharges
                 'diskon' => $calculation['total_diskon'],
                 'diskon_detail' => $calculation['diskon_detail'], // NEW: Save detailed discount info
                 'pajak' => $calculation['pajak_amount'],
@@ -305,6 +472,17 @@ class TransaksiController extends Controller
                     ? Transaksi::DIBAYAR_LUNAS 
                     : Transaksi::DIBAYAR_BELUM,
                 'id_user' => $user->id,
+                
+                // NEW FIELDS
+                'customer_lat' => $validated['customer_lat'] ?? null,
+                'customer_lng' => $validated['customer_lng'] ?? null,
+                'alamat_lengkap' => $validated['alamat_lengkap'] ?? null,
+                'catatan_lokasi' => $validated['catatan_lokasi'] ?? null,
+                'distance_km' => $shippingDistance,
+                // We prefer the calculated cost to ensure consistency, 
+                // but if we TRUST the frontend completely we could use $validated['shipping_cost']
+                // For now, let's use the calculated one to be safe and consistent with total_akhir
+                'shipping_cost' => $calculation['shipping_cost'], 
             ]);
 
             // Create detail transactions
@@ -341,13 +519,29 @@ class TransaksiController extends Controller
             }
 
             // Update alamat dan koordinat customer untuk semua (member & non-member); non-member bisa jadi member nanti
-            if ($customer && !empty($validated['alamat_update'])) {
-                $update = ['alamat' => $validated['alamat_update']];
-                if (isset($validated['latitude_update']) && isset($validated['longitude_update'])) {
-                    $update['latitude'] = $validated['latitude_update'];
-                    $update['longitude'] = $validated['longitude_update'];
+            if ($customer) {
+                $updateData = [];
+
+                // 1. Cek field baru (alamat_lengkap)
+                if (!empty($validated['alamat_lengkap'])) {
+                    $updateData['alamat'] = $validated['alamat_lengkap'];
+                    if (isset($validated['customer_lat']) && isset($validated['customer_lng'])) {
+                        $updateData['latitude'] = $validated['customer_lat'];
+                        $updateData['longitude'] = $validated['customer_lng'];
+                    }
+                } 
+                // 2. Fallback check field lama (alamat_update)
+                else if (!empty($validated['alamat_update'])) {
+                    $updateData['alamat'] = $validated['alamat_update'];
+                    if (isset($validated['latitude_update']) && isset($validated['longitude_update'])) {
+                        $updateData['latitude'] = $validated['latitude_update'];
+                        $updateData['longitude'] = $validated['longitude_update'];
+                    }
                 }
-                $customer->update($update);
+
+                if (!empty($updateData)) {
+                    $customer->update($updateData);
+                }
             }
 
             // Auto-member check

@@ -13,19 +13,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Separator } from '@/Components/ui/separator';
 import { Alert, AlertDescription } from '@/Components/ui/alert';
 import { toast } from 'sonner';
-import { 
-    ArrowLeft, Plus, Trash2, Store, User, Calendar, 
+import {
+    ArrowLeft, Plus, Trash2, Store, User, Calendar,
     Package, CreditCard, Tag, Gift, DollarSign, Calculator,
     X, Check, Crown, AlertCircle, TrendingUp, Truck, MapPin
 } from 'lucide-react';
 
-export default function TransaksiCreate({ 
-    outlets, 
-    customers, 
-    pakets, 
+export default function TransaksiCreate({
+    outlets,
+    customers,
+    pakets,
     surcharges,
-    shippingOptions, 
-    promos, 
+    shippingOptions,
+    promos,
     settings,
     invoiceCode,
     selectedOutletId,
@@ -109,17 +109,25 @@ export default function TransaksiCreate({
         !selectedCustomer.alamat;
 
     // ─── Sync customer id into form data ──────────────────────────────────
+    // Sync customer data into form
     useEffect(() => {
         if (selectedCustomer) {
-            setData('id_customer', selectedCustomer.id);
+            setData(d => ({
+                ...d,
+                id_customer: selectedCustomer.id,
+                alamat_lengkap: selectedCustomer.alamat || '',
+                customer_lat: selectedCustomer.latitude,
+                customer_lng: selectedCustomer.longitude,
+            }));
         } else {
-            setData('id_customer', null);
+            setData(d => ({
+                ...d,
+                id_customer: null,
+                alamat_lengkap: '',
+                customer_lat: null,
+                customer_lng: null,
+            }));
         }
-    }, [selectedCustomer]);
-
-    // Reset alamatUpdate whenever the customer changes
-    useEffect(() => {
-        setAlamatUpdate('');
     }, [selectedCustomer]);
 
     // Ganti customer → clear lokasi yang dipilih agar tidak dipakai untuk customer lain (terutama non-member)
@@ -152,7 +160,13 @@ export default function TransaksiCreate({
         redeem_points: 0,
         payment_action: 'bayar_nanti',
         jumlah_bayar: null,
-        alamat_update: null,
+        // NEW Shipping fields
+        customer_lat: null,
+        customer_lng: null,
+        alamat_lengkap: '',
+        catatan_lokasi: '',
+        distance_km: 0,
+        shipping_cost: 0,
     });
 
     // ─── Quick-add customer form ──────────────────────────────────────────
@@ -227,7 +241,7 @@ export default function TransaksiCreate({
             setShippingDistance(0);
             return;
         }
-        
+
         const shipping = shippingOptions.find(s => s.id === selectedShipping);
         if (!shipping || shipping.calculation_type !== 'distance') {
             setAutoDistance(0);
@@ -235,39 +249,41 @@ export default function TransaksiCreate({
             setShippingDistance(0);
             return;
         }
-        
+
         const lat = selectedCustomer.latitude != null ? parseFloat(selectedCustomer.latitude) : null;
         const lng = selectedCustomer.longitude != null ? parseFloat(selectedCustomer.longitude) : null;
-        
+
         // FIXED: Hapus kondisi useExistingAddress === false yang menyebabkan fetch tidak jalan
         if (lat == null || lng == null) {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/9117ef37-32fa-4361-956a-471015fc6adb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Create.jsx:ongkir-skip',message:'Ongkir fetch skipped',data:{customerId:selectedCustomer?.id,hasAlamat:!!selectedCustomer?.alamat,lat,lng,isEditingAddress},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-            // #endregion
             return;
         }
-        
+
         // Skip jika sedang edit address (biar map yang handle)
         if (isEditingAddress) {
             return;
         }
-        
+
         let cancelled = false;
         setCalculatingShipping(true);
-        
+
         const payload = {
             outlet_id: currentOutletId,
             customer_lat: lat,
             customer_lng: lng,
         };
         if (selectedShipping) payload.shipping_id = selectedShipping;
-        
+
         axios.post('/api/calculate-shipping', payload)
             .then((response) => {
                 if (cancelled || !response.data.success) return;
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/9117ef37-32fa-4361-956a-471015fc6adb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Create.jsx:ongkir-fetch-done',message:'Ongkir fetched for registered address',data:{customerId:selectedCustomer?.id,lat,lng,distance:response.data.distance,cost:response.data.cost},timestamp:Date.now(),hypothesisId:'H2,H3'})}).catch(()=>{});
-                // #endregion
+
+                // Update form data with calculated distance/cost
+                setData(d => ({
+                    ...d,
+                    distance_km: response.data.distance,
+                    shipping_cost: response.data.cost
+                }));
+
                 setAutoDistance(response.data.distance);
                 setAutoCost(response.data.cost);
                 setShippingDistance(response.data.distance);
@@ -282,7 +298,7 @@ export default function TransaksiCreate({
             .finally(() => {
                 if (!cancelled) setCalculatingShipping(false);
             });
-        
+
         return () => { cancelled = true; };
     }, [
         selectedCustomer?.id,
@@ -291,7 +307,7 @@ export default function TransaksiCreate({
         selectedCustomer?.longitude,
         selectedShipping,
         currentOutletId,
-        isEditingAddress  
+        isEditingAddress
     ]);
 
     // ─── Helpers (Moved up for safety) ────────────────────────────────────
@@ -365,10 +381,10 @@ export default function TransaksiCreate({
             if (response.data.success) {
                 setAutoDistance(response.data.distance);
                 setAutoCost(response.data.cost);
-                
+
                 // Auto-fill shipping distance field
                 setShippingDistance(response.data.distance);
-                
+
                 toast.success(
                     `✓ Jarak: ${response.data.distance} km | Ongkir: ${formatRupiah(response.data.cost)}`
                 );
@@ -395,10 +411,15 @@ export default function TransaksiCreate({
         } else {
             const shipping = shippingOptions.find(s => s.id === parseInt(shippingId));
             setSelectedShipping(parseInt(shippingId));
-            
+
             // Show map if it's distance-based shipping
             if (shipping && shipping.calculation_type === 'distance') {
                 setShowMap(true);
+                // If customer has no address, automatically enter edit mode so they can pick one
+                if (!data.alamat_lengkap) {
+                    setIsEditingAddress(true);
+                    setUseExistingAddress(false);
+                }
             } else {
                 setShowMap(false);
                 setShippingLocation(null);
@@ -407,7 +428,7 @@ export default function TransaksiCreate({
             }
         }
     };
-    
+
     useEffect(() => {
         calculateTotal();
     }, [items, selectedSurcharges, surchargeDistances, selectedShipping, shippingDistance, selectedPromo, redeemPoints, autoShippingCost, autoDistance]);
@@ -472,8 +493,6 @@ export default function TransaksiCreate({
                                 distance = autoDistance || shippingDistance || 0;
                             }
                             shippingCost = shipping.nominal * distance;
-                            // #region agent log
-                            fetch('http://127.0.0.1:7242/ingest/9117ef37-32fa-4361-956a-471015fc6adb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Create.jsx:calculateTotal-shipping',message:'Shipping cost computed',data:{useExistingAddress,hasAlamat:!!selectedCustomer?.alamat,autoDistance,shippingDistance,distance,shippingCost},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
                             // #endregion
                             break;
                         case 'fixed':
@@ -611,70 +630,58 @@ export default function TransaksiCreate({
         toast.info('Menggunakan alamat terdaftar');
     };
 
-    // Confirm new address: simpan ke customer agar tidak hilang saat reload
-    const handleConfirmNewAddress = async () => {
-        if (!shippingLocation?.address || !selectedCustomer?.id) {
+    // Confirm new address from Map
+    const handleConfirmNewAddress = () => {
+        if (!shippingLocation?.address) {
             toast.error('Pilih lokasi di peta terlebih dahulu');
             return;
         }
+
         const lat = shippingLocation.lat != null ? parseFloat(shippingLocation.lat) : null;
         const lng = shippingLocation.lng != null ? parseFloat(shippingLocation.lng) : null;
+
         if (lat == null || lng == null) {
             toast.error('Koordinat lokasi tidak valid');
             return;
         }
 
-        setCalculatingShipping(true);
-        try {
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-            const { data } = await axios.post(
-                route('customers.update-address', selectedCustomer.id),
-                {
-                    alamat: shippingLocation.address,
-                    latitude: lat,
-                    longitude: lng,
-                },
-                {
-                    headers: csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {},
-                }
-            );
+        // Update form data directly
+        setData(d => ({
+            ...d,
+            alamat_lengkap: shippingLocation.address,
+            customer_lat: lat,
+            customer_lng: lng
+        }));
 
-            if (data.success && data.customer) {
-                setSelectedCustomer((prev) => (prev ? { ...prev, ...data.customer } : null));
-                setIsEditingAddress(false);
-                setUseExistingAddress(true);
-                setShowMap(false);
-                toast.success(`Lokasi disimpan | Jarak: ${autoDistance} km | Ongkir: ${formatRupiah(autoCost)}`);
-            } else {
-                toast.error(data.message || 'Gagal menyimpan alamat');
-            }
-        } catch (err) {
-            const msg = err.response?.data?.message || err.message || 'Gagal menyimpan alamat';
-            toast.error(msg);
-        } finally {
-            setCalculatingShipping(false);
-        }
+        // Trigger calculation (optional since we have useEffects, but good for immediate feedback)
+        calculateAutoShipping(lat, lng);
+
+        setIsEditingAddress(false);
+        setUseExistingAddress(false); // We are using a manually picked location
+        setShowMap(false);
+
+        toast.success('Lokasi berhasil dipilih');
     };
 
-    
+
     const selectAllEligiblePromos = () => {
         if (!selectedCustomer) return [];
-        
+
         const baseAmount = calculation.base_for_discount;
         if (baseAmount === 0) return [];
-    
+
         const eligiblePromos = promos.filter(promo => {
             if (!promo.is_active || !promo.is_stackable) return false;
             if (promo.syarat_member_only && !selectedCustomer.is_member) return false;
             if (promo.minimal_transaksi && baseAmount < promo.minimal_transaksi) return false;
-            
+
             const now = new Date();
             if (promo.tanggal_mulai && new Date(promo.tanggal_mulai) > now) return false;
             if (promo.tanggal_selesai && new Date(promo.tanggal_selesai) < now) return false;
-            
+
             return true;
         });
-    
+
         return eligiblePromos.sort((a, b) => {
             if (a.priority !== b.priority) {
                 return a.priority - b.priority;
@@ -682,7 +689,7 @@ export default function TransaksiCreate({
             return new Date(b.created_at) - new Date(a.created_at);
         });
     };
-    
+
     // TAMBAHKAN FUNGSI INI DI SINI ↓↓↓
     const getPromoInfo = () => {
         if (!selectedCustomer) {
@@ -692,16 +699,16 @@ export default function TransaksiCreate({
                 promos: [],
             };
         }
-    
+
         const eligiblePromos = selectAllEligiblePromos();
-        
+
         return {
             hasEligible: eligiblePromos.length > 0,
             eligibleCount: eligiblePromos.length,
             promos: eligiblePromos,
         };
     };
-    
+
     const buildPayload = (paymentAction, jumlahBayar) => {
         const cleanItems = items
             .filter(item => item.id_paket && item.id_paket !== '' && item.id_paket !== 'none' && !isNaN(item.id_paket))
@@ -714,7 +721,7 @@ export default function TransaksiCreate({
         // UPDATED ALAMAT LOGIC
         let finalAlamatUpdate = null;
         let finalShippingDistance = 0;
-        
+
         if (butuhAlamat) {
             if (useExistingAddress && selectedCustomer.alamat) {
                 // Pakai alamat existing - kirim jarak yang sudah dihitung dari koordinat customer
@@ -735,9 +742,7 @@ export default function TransaksiCreate({
             }
         }
 
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/9117ef37-32fa-4361-956a-471015fc6adb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Create.jsx:buildPayload',message:'Payload built',data:{butuhAlamat,useExistingAddress,hasAlamat:!!selectedCustomer?.alamat,finalShippingDistance,finalAlamatUpdate:!!finalAlamatUpdate,autoDistance,shippingDistance,calculationTotalAkhir:calculation.total_akhir},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-        // #endregion
+
 
         const payloadData = {
             id_outlet: currentOutletId,
@@ -748,19 +753,29 @@ export default function TransaksiCreate({
             surcharges: selectedSurcharges,
             surcharge_distances: surchargeDistances,
             shipping_id: selectedShipping,
-            shipping_distance: finalShippingDistance,
             redeem_points: Math.min(redeemPoints, calculation.max_redeemable_points),
             payment_action: paymentAction,
             jumlah_bayar: jumlahBayar,
-            alamat_update: finalAlamatUpdate,
         };
-        if (finalAlamatUpdate && shippingLocation?.lat != null && shippingLocation?.lng != null) {
-            payloadData.latitude_update = shippingLocation.lat;
-            payloadData.longitude_update = shippingLocation.lng;
+
+        // If delivery, send all location data
+        if (selectedShipping && selectedShipping !== 'none') {
+            payloadData.customer_lat = data.customer_lat;
+            payloadData.customer_lng = data.customer_lng;
+            payloadData.alamat_lengkap = data.alamat_lengkap;
+            payloadData.catatan_lokasi = data.catatan_lokasi;
+            payloadData.distance_km = autoDistance || shippingDistance; // Use calculated distance
+            payloadData.shipping_cost = calculation.shipping_cost;
+        } else {
+            // Pickup / No shipping
+            payloadData.customer_lat = null;
+            payloadData.customer_lng = null;
+            payloadData.alamat_lengkap = null;
+            payloadData.catatan_lokasi = null;
+            payloadData.distance_km = 0;
+            payloadData.shipping_cost = 0;
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/9117ef37-32fa-4361-956a-471015fc6adb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Create.jsx:payload-ready',message:'Payload ready for submit',data:{shipping_distance:payloadData.shipping_distance,calculation_total_akhir:calculation.total_akhir},timestamp:Date.now(),hypothesisId:'H1,H5'})}).catch(()=>{});
-        // #endregion
+
         return payloadData;
     };
 
@@ -776,30 +791,30 @@ export default function TransaksiCreate({
     };
 
     // ─── Pay Now (opens dialog) ────────────────────────────────────────────
-        const handlePayNow = () => {
-            if (!validateForm()) return;
-            setPaymentAmount(calculation.total_akhir.toString());
-            setShowPaymentDialog(true);
-        };
+    const handlePayNow = () => {
+        if (!validateForm()) return;
+        setPaymentAmount(calculation.total_akhir.toString());
+        setShowPaymentDialog(true);
+    };
 
-        // ─── Payment dialog submit ─────────────────────────────────────────────
-        const handlePaymentSubmit = () => {
-            const amount = parseFloat(paymentAmount);
-            if (isNaN(amount) || amount < calculation.total_akhir) {
-                toast.error('Jumlah bayar kurang dari total tagihan!');
-                return;
-            }
+    // ─── Payment dialog submit ─────────────────────────────────────────────
+    const handlePaymentSubmit = () => {
+        const amount = parseFloat(paymentAmount);
+        if (isNaN(amount) || amount < calculation.total_akhir) {
+            toast.error('Jumlah bayar kurang dari total tagihan!');
+            return;
+        }
 
-            router.post(route('transaksi.store'), buildPayload('bayar_lunas', amount), {
-                onSuccess: () => setShowPaymentDialog(false),
-                onError: (errs) => {
-                    Object.values(errs).forEach(error => toast.error(error));
-                },
-            });
-        };
+        router.post(route('transaksi.store'), buildPayload('bayar_lunas', amount), {
+            onSuccess: () => setShowPaymentDialog(false),
+            onError: (errs) => {
+                Object.values(errs).forEach(error => toast.error(error));
+            },
+        });
+    };
 
-        // ─── Validation ────────────────────────────────────────────────────────
-        const validateForm = () => {
+    // ─── Validation ────────────────────────────────────────────────────────
+    const validateForm = () => {
         if (!currentOutletId) {
             toast.error('Pilih outlet terlebih dahulu!');
             return false;
@@ -862,7 +877,7 @@ export default function TransaksiCreate({
 
         return true;
     };
-    
+
     const isPromoEligible = (promo) => {
         if (!promo) return false;
         if (promo.syarat_member_only && (!selectedCustomer || !selectedCustomer.is_member)) return false;
@@ -1189,328 +1204,293 @@ export default function TransaksiCreate({
                                     </Card>
                                 )}
 
-                               {/* ═══ UNIFIED SHIPPING SECTION (Manual + Auto with Map) ═══ */}
-                            
-                            {selectedCustomer && (
-                                <Card className="border-2 border-orange-200 dark:border-orange-900">
-                                    <CardHeader>
-                                        <CardTitle className="flex items-center gap-2">
-                                            <Truck className="h-5 w-5 text-orange-600" />
-                                            Pengiriman & Ongkos Kirim
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        {/* Shipping Option Selector */}
-                                        <div>
-                                            <Label>Pilih Opsi Pengiriman</Label>
-                                            <Select
-                                                value={selectedShipping?.toString() || 'none'}
-                                                onValueChange={handleShippingChange}
-                                                disabled={shippingOptions.length === 0}
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder={shippingOptions.length === 0 ? 'Tidak ada opsi pengiriman' : 'Tidak ada pengiriman'} />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="none">Tidak ada pengiriman (Ambil Sendiri)</SelectItem>
-                                                    {shippingOptions.map((shipping) => {
-                                                        const isFree = shipping.min_order_total && 
-                                                                    calculation.subtotal_items >= shipping.min_order_total;
-                                                        return (
-                                                            <SelectItem key={shipping.id} value={shipping.id.toString()}>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span>{shipping.nama}</span>
-                                                                    {shipping.calculation_type === 'distance' && (
-                                                                        <MapPin className="h-3 w-3 text-purple-600" />
-                                                                    )}
-                                                                    <span className="text-xs text-gray-500">
-                                                                        - {shipping.formatted_nominal}
-                                                                        {isFree && ' (GRATIS)'}
-                                                                    </span>
-                                                                </div>
-                                                            </SelectItem>
-                                                        );
-                                                    })}
-                                                </SelectContent>
-                                            </Select>
-                                            <p className="mt-1 text-xs text-gray-500">
-                                                {shippingOptions.length === 0
-                                                    ? 'Tambah opsi pengiriman di Master Data → Biaya Tambahan (tipe pengiriman).'
-                                                    : selectedShipping && shippingOptions.find(s => s.id === selectedShipping)?.calculation_type === 'distance'
-                                                        ? selectedCustomer.alamat
-                                                            ? '✓ Customer sudah punya alamat terdaftar'
-                                                            : '⚠️ Alamat perlu ditentukan'
-                                                        : selectedShipping
-                                                            ? 'Biaya tetap tanpa perhitungan jarak'
-                                                            : 'Pilih opsi pengiriman untuk menambah ongkir'
-                                                }
-                                            </p>
-                                        </div>
+                                {/* ═══ UNIFIED SHIPPING SECTION (Manual + Auto with Map) ═══ */}
 
-                                        {/* ADDRESS MANAGEMENT - Only show if distance-based shipping selected */}
-                                        {selectedShipping && shippingOptions.find(s => s.id === selectedShipping)?.calculation_type === 'distance' && (
-                                            <>
-                                                <Separator />
-                                                
-                                                {/* ═══ EXISTING ADDRESS CARD ═══ */}
-                                                {selectedCustomer.alamat && useExistingAddress && !isEditingAddress && (
-                                                    <div className="p-4 bg-green-50 dark:bg-green-900/10 rounded-lg border-2 border-green-200 dark:border-green-800">
-                                                        <div className="flex items-start gap-3">
-                                                            <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
-                                                                <MapPin className="h-5 w-5 text-green-600" />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="flex items-center gap-2 mb-1">
-                                                                    <p className="text-xs font-semibold text-green-800 dark:text-green-300">
-                                                                        ALAMAT PENGIRIMAN TERDAFTAR
-                                                                    </p>
-                                                                    <Badge variant="outline" className="border-green-500 text-green-700 text-[10px] px-1.5 py-0">
-                                                                        <Check className="h-2.5 w-2.5 mr-1" />
-                                                                        Aktif
-                                                                    </Badge>
-                                                                </div>
-                                                                <p className="text-sm text-gray-900 dark:text-gray-100 break-words mb-3 leading-relaxed">
-                                                                    {selectedCustomer.alamat}
+                                {selectedCustomer && (
+                                    <Card className="border-2 border-orange-200 dark:border-orange-900">
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <Truck className="h-5 w-5 text-orange-600" />
+                                                Pengiriman & Ongkos Kirim
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4">
+                                            {/* Shipping Option Selector */}
+                                            <div>
+                                                <Label>Pilih Opsi Pengiriman</Label>
+                                                <Select
+                                                    value={selectedShipping?.toString() || 'none'}
+                                                    onValueChange={handleShippingChange}
+                                                    disabled={shippingOptions.length === 0}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder={shippingOptions.length === 0 ? 'Tidak ada opsi pengiriman' : 'Tidak ada pengiriman'} />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="none">Tidak ada pengiriman (Ambil Sendiri)</SelectItem>
+                                                        {shippingOptions.map((shipping) => {
+                                                            const isFree = shipping.min_order_total &&
+                                                                calculation.subtotal_items >= shipping.min_order_total;
+                                                            return (
+                                                                <SelectItem key={shipping.id} value={shipping.id.toString()}>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span>{shipping.nama}</span>
+                                                                        {shipping.calculation_type === 'distance' && (
+                                                                            <MapPin className="h-3 w-3 text-purple-600" />
+                                                                        )}
+                                                                        <span className="text-xs text-gray-500">
+                                                                            - {shipping.formatted_nominal}
+                                                                            {isFree && ' (GRATIS)'}
+                                                                        </span>
+                                                                    </div>
+                                                                </SelectItem>
+                                                            );
+                                                        })}
+                                                    </SelectContent>
+                                                </Select>
+                                                <p className="mt-1 text-xs text-gray-500">
+                                                    {shippingOptions.length === 0
+                                                        ? 'Tambah opsi pengiriman di Master Data → Biaya Tambahan (tipe pengiriman).'
+                                                        : selectedShipping && shippingOptions.find(s => s.id === selectedShipping)?.calculation_type === 'distance'
+                                                            ? selectedCustomer.alamat
+                                                                ? '✓ Customer sudah punya alamat terdaftar'
+                                                                : '⚠️ Alamat perlu ditentukan'
+                                                            : selectedShipping
+                                                                ? 'Biaya tetap tanpa perhitungan jarak'
+                                                                : 'Pilih opsi pengiriman untuk menambah ongkir'
+                                                    }
+                                                </p>
+                                            </div>
+
+                                            {/* ADDRESS MANAGEMENT - Only show if distance-based shipping selected */}
+                                            {selectedShipping && shippingOptions.find(s => s.id === selectedShipping)?.calculation_type === 'distance' && (
+                                                <>
+                                                    <Separator />
+
+                                                    {/* ═══ NO ADDRESS WARNING ═══ */}
+                                                    {!data.alamat_lengkap && !isEditingAddress && (
+                                                        <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-900/10">
+                                                            <AlertCircle className="h-5 w-5 text-amber-600" />
+                                                            <AlertDescription>
+                                                                <p className="font-semibold text-amber-900 dark:text-amber-200 mb-2">
+                                                                    Alamat pengiriman belum tersedia
+                                                                </p>
+                                                                <p className="text-sm text-amber-800 dark:text-amber-300 mb-3">
+                                                                    Customer <strong>{selectedCustomer.nama}</strong> belum memiliki alamat atau lokasi belum dipilih.
                                                                 </p>
                                                                 <Button
                                                                     type="button"
-                                                                    variant="outline"
-                                                                    size="sm"
                                                                     onClick={handleChangeAddress}
-                                                                    className="text-blue-600 border-blue-300 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-400"
+                                                                    size="sm"
+                                                                    className="bg-amber-600 hover:bg-amber-700 text-white"
                                                                 >
-                                                                    <MapPin className="h-3.5 w-3.5 mr-2" />
-                                                                    Ganti Lokasi Pengiriman
+                                                                    <MapPin className="h-4 w-4 mr-2" />
+                                                                    Tentukan Lokasi Pengiriman
                                                                 </Button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                            </AlertDescription>
+                                                        </Alert>
+                                                    )}
 
-                                                {/* ═══ NO ADDRESS WARNING ═══ */}
-                                                {!selectedCustomer.alamat && !isEditingAddress && (
-                                                    <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-900/10">
-                                                        <AlertCircle className="h-5 w-5 text-amber-600" />
-                                                        <AlertDescription>
-                                                            <p className="font-semibold text-amber-900 dark:text-amber-200 mb-2">
-                                                                Alamat pengiriman belum terdaftar
-                                                            </p>
-                                                            <p className="text-sm text-amber-800 dark:text-amber-300 mb-3">
-                                                                Customer <strong>{selectedCustomer.nama}</strong> belum memiliki alamat.
-                                                                Tentukan lokasi pengiriman untuk melanjutkan.
-                                                            </p>
-                                                            <Button
-                                                                type="button"
-                                                                onClick={handleChangeAddress}
-                                                                size="sm"
-                                                                className="bg-amber-600 hover:bg-amber-700 text-white"
-                                                            >
-                                                                <MapPin className="h-4 w-4 mr-2" />
-                                                                Tentukan Lokasi Pengiriman
-                                                            </Button>
-                                                        </AlertDescription>
-                                                    </Alert>
-                                                )}
-
-                                                {/* ═══ MAP SECTION - Show when editing ═══ */}
-                                                {(showMap || isEditingAddress) && (
-                                                    <div className="space-y-4 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg border-2 border-blue-200">
-                                                        {selectedCustomer.alamat && (selectedCustomer.latitude == null || selectedCustomer.longitude == null) && (
-                                                            <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-900/10">
-                                                                <AlertCircle className="h-5 w-5 text-amber-600" />
-                                                                <AlertDescription>
-                                                                    <p className="font-semibold text-amber-900 dark:text-amber-200">
-                                                                        Koordinat alamat terdaftar belum tersimpan
+                                                    {/* ═══ MAP SECTION - Show when editing ═══ */}
+                                                    {(showMap || isEditingAddress) && (
+                                                        <div className="space-y-4 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg border-2 border-blue-200">
+                                                            <div className="flex items-center justify-between">
+                                                                <div>
+                                                                    <Label className="text-base font-semibold flex items-center gap-2">
+                                                                        <MapPin className="h-4 w-4 text-blue-600" />
+                                                                        {selectedCustomer.alamat ? 'Pilih Lokasi Baru' : 'Tentukan Lokasi Pengantaran'}
+                                                                    </Label>
+                                                                    <p className="text-xs text-gray-500 mt-1">
+                                                                        {selectedCustomer.alamat
+                                                                            ? 'Lokasi baru akan mengganti alamat yang terdaftar'
+                                                                            : 'Klik pada peta atau cari alamat untuk menentukan lokasi'
+                                                                        }
                                                                     </p>
-                                                                    <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
-                                                                        Tentukan lokasi di peta agar ongkir bisa dihitung dan nominal total sesuai.
-                                                                    </p>
-                                                                </AlertDescription>
-                                                            </Alert>
-                                                        )}
-                                                        <div className="flex items-center justify-between">
-                                                            <div>
-                                                                <Label className="text-base font-semibold flex items-center gap-2">
-                                                                    <MapPin className="h-4 w-4 text-blue-600" />
-                                                                    {selectedCustomer.alamat ? 'Pilih Lokasi Baru' : 'Tentukan Lokasi Pengantaran'}
-                                                                </Label>
-                                                                <p className="text-xs text-gray-500 mt-1">
-                                                                    {selectedCustomer.alamat 
-                                                                        ? 'Lokasi baru akan mengganti alamat yang terdaftar'
-                                                                        : 'Klik pada peta atau cari alamat untuk menentukan lokasi'
-                                                                    }
-                                                                </p>
+                                                                </div>
+                                                                {calculatingShipping && (
+                                                                    <div className="flex items-center gap-2 text-blue-600">
+                                                                        <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                                                                        <span className="text-xs font-medium">Menghitung...</span>
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                            {calculatingShipping && (
-                                                                <div className="flex items-center gap-2 text-blue-600">
-                                                                    <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
-                                                                    <span className="text-xs font-medium">Menghitung...</span>
+
+                                                            {/* Map Component */}
+                                                            <div className="rounded-lg overflow-hidden border-2 border-blue-300">
+                                                                <LocationPicker
+                                                                    initialLat={shippingLocation?.lat || data.customer_lat || -6.2088}
+                                                                    initialLng={shippingLocation?.lng || data.customer_lng || 106.8456}
+                                                                    onLocationChange={(location) => {
+                                                                        setShippingLocation(location);
+                                                                        calculateAutoShipping(location.lat, location.lng);
+                                                                    }}
+                                                                    height="350px"
+                                                                />
+                                                            </div>
+
+                                                            {/* Selected Address Display (Preview in Map Mode) */}
+                                                            {shippingLocation && (
+                                                                <div className="p-3 bg-white dark:bg-gray-900 rounded-lg border-2 border-gray-200 dark:border-gray-700">
+                                                                    <div className="flex items-start gap-3">
+                                                                        <MapPin className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                                                                Lokasi yang Dipilih:
+                                                                            </p>
+                                                                            <p className="text-sm text-gray-900 dark:text-gray-100 break-words leading-relaxed">
+                                                                                {shippingLocation.address}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Calculation Result */}
+                                                            {!calculatingShipping && autoDistance > 0 && (
+                                                                <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/10 dark:to-emerald-900/10 rounded-lg border-2 border-green-300 dark:border-green-800">
+                                                                    <div className="grid grid-cols-2 gap-4 mb-3">
+                                                                        <div>
+                                                                            <p className="text-xs text-gray-600 dark:text-gray-400 mb-1 font-medium">
+                                                                                Jarak dari Outlet
+                                                                            </p>
+                                                                            <div className="flex items-baseline gap-2">
+                                                                                <span className="text-3xl font-bold text-green-600">
+                                                                                    {autoDistance}
+                                                                                </span>
+                                                                                <span className="text-sm text-gray-600 dark:text-gray-400 font-medium">
+                                                                                    km
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="text-right">
+                                                                            <p className="text-xs text-gray-600 dark:text-gray-400 mb-1 font-medium">
+                                                                                Biaya Ongkir
+                                                                            </p>
+                                                                            <div className="text-2xl font-bold text-orange-600">
+                                                                                {formatRupiah(autoCost)}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2 pt-3 border-t border-green-200 dark:border-green-800">
+                                                                        <Check className="h-4 w-4 text-green-600 flex-shrink-0" />
+                                                                        <p className="text-xs text-green-700 dark:text-green-400 font-medium">
+                                                                            Jarak dan ongkir dihitung otomatis dari lokasi outlet
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Action Buttons */}
+                                                            {(isEditingAddress || (!data.alamat_lengkap && showMap)) && (
+                                                                <div className="flex gap-2 pt-2">
+                                                                    {selectedCustomer.alamat && (
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="outline"
+                                                                            onClick={handleCancelEditAddress}
+                                                                            className="flex-1"
+                                                                        >
+                                                                            <X className="h-4 w-4 mr-2" />
+                                                                            Batal
+                                                                        </Button>
+                                                                    )}
+                                                                    <Button
+                                                                        type="button"
+                                                                        onClick={handleConfirmNewAddress}
+                                                                        disabled={!shippingLocation?.address || calculatingShipping}
+                                                                        className="flex-1 bg-green-600 hover:bg-green-700"
+                                                                    >
+                                                                        <Check className="h-4 w-4 mr-2" />
+                                                                        {selectedCustomer.alamat ? 'Ganti ke Lokasi Ini' : 'Konfirmasi Lokasi'}
+                                                                    </Button>
                                                                 </div>
                                                             )}
                                                         </div>
+                                                    )}
 
-                                                        {/* Map Component */}
-                                                        <div className="rounded-lg overflow-hidden border-2 border-blue-300">
-                                                            <LocationPicker
-                                                                initialLat={shippingLocation?.lat || selectedCustomer.latitude || -6.2088}
-                                                                initialLng={shippingLocation?.lng || selectedCustomer.longitude || 106.8456}
-                                                                onLocationChange={(location) => {
-                                                                    setShippingLocation(location);
-                                                                    calculateAutoShipping(location.lat, location.lng);
-                                                                }}
-                                                                height="350px"
-                                                            />
-                                                        </div>
-
-                                                        {/* Selected Address Display */}
-                                                        {shippingLocation && (
-                                                            <div className="p-3 bg-white dark:bg-gray-900 rounded-lg border-2 border-gray-200 dark:border-gray-700">
-                                                                <div className="flex items-start gap-3">
-                                                                    <MapPin className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
-                                                                    <div className="flex-1 min-w-0">
-                                                                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                                                                            Lokasi yang Dipilih:
-                                                                        </p>
-                                                                        <p className="text-sm text-gray-900 dark:text-gray-100 break-words leading-relaxed">
-                                                                            {shippingLocation.address}
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Calculation Result */}
-                                                        {!calculatingShipping && autoDistance > 0 && (
-                                                            <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/10 dark:to-emerald-900/10 rounded-lg border-2 border-green-300 dark:border-green-800">
-                                                                <div className="grid grid-cols-2 gap-4 mb-3">
-                                                                    <div>
-                                                                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-1 font-medium">
-                                                                            Jarak dari Outlet
-                                                                        </p>
-                                                                        <div className="flex items-baseline gap-2">
-                                                                            <span className="text-3xl font-bold text-green-600">
-                                                                                {autoDistance}
-                                                                            </span>
-                                                                            <span className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-                                                                                km
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="text-right">
-                                                                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-1 font-medium">
-                                                                            Biaya Ongkir
-                                                                        </p>
-                                                                        <div className="text-2xl font-bold text-orange-600">
-                                                                            {formatRupiah(autoCost)}
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="flex items-center gap-2 pt-3 border-t border-green-200 dark:border-green-800">
-                                                                    <Check className="h-4 w-4 text-green-600 flex-shrink-0" />
-                                                                    <p className="text-xs text-green-700 dark:text-green-400 font-medium">
-                                                                        Jarak dan ongkir dihitung otomatis dari lokasi outlet
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Action Buttons */}
-                                                        {isEditingAddress && (
-                                                            <div className="flex gap-2 pt-2">
-                                                                {selectedCustomer.alamat && (
-                                                                    <Button
-                                                                        type="button"
-                                                                        variant="outline"
-                                                                        onClick={handleCancelEditAddress}
-                                                                        className="flex-1"
-                                                                    >
-                                                                        <X className="h-4 w-4 mr-2" />
-                                                                        Batal - Pakai Alamat Lama
-                                                                    </Button>
-                                                                )}
-                                                                <Button
-                                                                    type="button"
-                                                                    onClick={handleConfirmNewAddress}
-                                                                    disabled={!shippingLocation?.address || calculatingShipping}
-                                                                    className="flex-1 bg-green-600 hover:bg-green-700"
-                                                                >
-                                                                    <Check className="h-4 w-4 mr-2" />
-                                                                    {selectedCustomer.alamat ? 'Ganti ke Lokasi Ini' : 'Konfirmasi Lokasi'}
-                                                                </Button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* ═══ CONFIRMED NEW ADDRESS ═══ */}
-                                                {!useExistingAddress && !isEditingAddress && shippingLocation && (
-                                                    <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg border-2 border-blue-300 dark:border-blue-800">
-                                                        <div className="flex items-start gap-3">
-                                                            <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-                                                                <Check className="h-5 w-5 text-blue-600" />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="flex items-center gap-2 mb-1">
-                                                                    <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">
-                                                                        LOKASI BARU DIKONFIRMASI
-                                                                    </p>
-                                                                    {selectedCustomer.alamat && (
-                                                                        <Badge variant="outline" className="border-amber-500 text-amber-700 text-[10px] px-1.5 py-0">
-                                                                            Akan Mengganti
-                                                                        </Badge>
+                                                    {/* ═══ UNIFIED ADDRESS DISPLAY (READ ONLY) ═══ */}
+                                                    {!isEditingAddress && data.alamat_lengkap && (
+                                                        <div className={`p-4 rounded-lg border-2 ${useExistingAddress ? 'bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-800' : 'bg-blue-50 border-blue-300 dark:bg-blue-900/10 dark:border-blue-800'}`}>
+                                                            <div className="flex items-start gap-3">
+                                                                <div className={`p-2 rounded-lg ${useExistingAddress ? 'bg-green-100 dark:bg-green-900/20' : 'bg-blue-100 dark:bg-blue-900/20'}`}>
+                                                                    {useExistingAddress ? (
+                                                                        <MapPin className="h-5 w-5 text-green-600" />
+                                                                    ) : (
+                                                                        <Check className="h-5 w-5 text-blue-600" />
                                                                     )}
                                                                 </div>
-                                                                <p className="text-sm text-gray-900 dark:text-gray-100 break-words mb-2 leading-relaxed">
-                                                                    {shippingLocation.address}
-                                                                </p>
-                                                                <div className="flex items-center gap-4 text-xs text-blue-700 dark:text-blue-400 mb-3">
-                                                                    <span className="font-medium">📏 Jarak: {autoDistance} km</span>
-                                                                    <span className="font-medium">💰 Ongkir: {formatRupiah(autoCost)}</span>
-                                                                </div>
-                                                                <Button
-                                                                    type="button"
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    onClick={handleChangeAddress}
-                                                                    className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-100 px-2 py-1 h-auto"
-                                                                >
-                                                                    ✏️ Ubah Lokasi
-                                                                </Button>
-                                                                {selectedCustomer.alamat && (
-                                                                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 italic">
-                                                                        ⚠️ Alamat customer akan disimpan setelah transaksi
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        <p className={`text-xs font-semibold ${useExistingAddress ? 'text-green-800 dark:text-green-300' : 'text-blue-800 dark:text-blue-300'}`}>
+                                                                            LOKASI PENGIRIMAN
+                                                                        </p>
+                                                                        <Badge variant="outline" className={`${useExistingAddress ? 'border-green-500 text-green-700' : 'border-blue-500 text-blue-700'} text-[10px] px-1.5 py-0`}>
+                                                                            {useExistingAddress ? 'Alamat Terdaftar' : 'Lokasi Baru'}
+                                                                        </Badge>
+                                                                    </div>
+                                                                    <p className="text-sm text-gray-900 dark:text-gray-100 break-words mb-2 leading-relaxed">
+                                                                        {data.alamat_lengkap}
                                                                     </p>
-                                                                )}
+                                                                    <div className={`flex items-center gap-4 text-xs ${useExistingAddress ? 'text-green-700 dark:text-green-400' : 'text-blue-700 dark:text-blue-400'} mb-3`}>
+                                                                        <span className="font-medium">📏 Jarak: {data.distance_km || autoDistance || 0} km</span>
+                                                                        <span className="font-medium">💰 Ongkir: {formatRupiah(data.shipping_cost || calculation.shipping_cost || 0)}</span>
+                                                                    </div>
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={handleChangeAddress}
+                                                                        className={`text-xs ${useExistingAddress ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-50' : 'text-blue-600 hover:text-blue-700 hover:bg-blue-100'} px-2 py-1 h-auto`}
+                                                                    >
+                                                                        ✏️ {useExistingAddress ? 'Ganti Lokasi' : 'Ubah Lokasi'}
+                                                                    </Button>
+                                                                </div>
                                                             </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* ═══ PATOKAN / CATATAN LOKASI ═══ */}
+                                                    {!isEditingAddress && data.alamat_lengkap && (
+                                                        <div className="mt-4">
+                                                            <Label htmlFor="catatan_lokasi">Patokan / Catatan Lokasi (Opsional)</Label>
+                                                            <Input
+                                                                id="catatan_lokasi"
+                                                                placeholder="Contoh: Pagar hitam, samping warung makan..."
+                                                                value={data.catatan_lokasi}
+                                                                onChange={(e) => setData('catatan_lokasi', e.target.value)}
+                                                                className="mt-1"
+                                                            />
+                                                            <p className="text-xs text-gray-500 mt-1">
+                                                                Bantu kurir menemukan lokasi dengan lebih mudah.
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+
+                                            {/* ═══ Non-distance shipping summary ═══ */}
+                                            {selectedShipping &&
+                                                shippingOptions.find(s => s.id === selectedShipping)?.calculation_type !== 'distance' &&
+                                                calculation.shipping_cost > 0 && (
+                                                    <div className="p-4 bg-orange-50 dark:bg-orange-900/10 rounded-lg border-2 border-orange-200">
+                                                        <div className="flex justify-between items-center">
+                                                            <div>
+                                                                <p className="text-xs text-gray-500 mb-1">Biaya Ongkir</p>
+                                                                <p className="text-sm font-medium text-gray-700">
+                                                                    {shippingOptions.find(s => s.id === selectedShipping)?.nama}
+                                                                </p>
+                                                            </div>
+                                                            <span className="text-2xl font-bold text-orange-600">
+                                                                {formatRupiah(calculation.shipping_cost)}
+                                                            </span>
                                                         </div>
                                                     </div>
                                                 )}
-                                            </>
-                                        )}
+                                        </CardContent>
+                                    </Card>
+                                )}
 
-                                        {/* ═══ Non-distance shipping summary ═══ */}
-                                        {selectedShipping && 
-                                        shippingOptions.find(s => s.id === selectedShipping)?.calculation_type !== 'distance' && 
-                                        calculation.shipping_cost > 0 && (
-                                            <div className="p-4 bg-orange-50 dark:bg-orange-900/10 rounded-lg border-2 border-orange-200">
-                                                <div className="flex justify-between items-center">
-                                                    <div>
-                                                        <p className="text-xs text-gray-500 mb-1">Biaya Ongkir</p>
-                                                        <p className="text-sm font-medium text-gray-700">
-                                                            {shippingOptions.find(s => s.id === selectedShipping)?.nama}
-                                                        </p>
-                                                    </div>
-                                                    <span className="text-2xl font-bold text-orange-600">
-                                                        {formatRupiah(calculation.shipping_cost)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                            )}
-
-                                {/* Promo & Points */}  
+                                {/* Promo & Points */}
                                 <Card>
                                     <CardHeader>
                                         <CardTitle className="flex items-center gap-2">
@@ -1522,139 +1502,139 @@ export default function TransaksiCreate({
                                         {/* AUTO PROMO SECTION */}
                                         <div>
                                             <div>
-                                            <Label className="text-base font-semibold mb-3 block">
-                                                Promo Otomatis
-                                            </Label>
-                                            
-                                            {(() => {
-                                                const promoInfo = getPromoInfo();
-                                                
-                                                if (!selectedCustomer) {
-                                                    return (
-                                                        <Alert className="border-gray-300 bg-gray-50 dark:bg-gray-900/10">
-                                                            <AlertCircle className="h-4 w-4 text-gray-500" />
-                                                            <AlertDescription className="text-gray-600 dark:text-gray-400">
-                                                                Pilih customer terlebih dahulu untuk melihat promo yang tersedia
-                                                            </AlertDescription>
-                                                        </Alert>
-                                                    );
-                                                }
-                                                
-                                                if (!promoInfo.hasEligible) {
-                                                    return (
-                                                        <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-900/10">
-                                                            <AlertCircle className="h-4 w-4 text-amber-600" />
-                                                            <AlertDescription>
-                                                                <p className="font-medium text-amber-900 dark:text-amber-200 mb-1">
-                                                                    Tidak ada promo yang memenuhi syarat
-                                                                </p>
-                                                                <p className="text-sm text-amber-800 dark:text-amber-300">
-                                                                    {!selectedCustomer.is_member && promos.some(p => p.syarat_member_only && p.is_active) && (
-                                                                        <span>💡 Upgrade ke Member untuk mendapat akses promo eksklusif!</span>
-                                                                    )}
-                                                                    {calculation.base_for_discount === 0 && (
-                                                                        <span>Tambahkan item untuk mengecek promo yang tersedia</span>
-                                                                    )}
-                                                                </p>
-                                                            </AlertDescription>
-                                                        </Alert>
-                                                    );
-                                                }
-                                                
-                                                // Show ALL applied promos
-                                                return (
-                                                    <div className="space-y-3">
-                                                        <Alert className="border-green-300 bg-green-50 dark:bg-green-900/10">
-                                                            <Check className="h-4 w-4 text-green-600" />
-                                                            <AlertDescription>
-                                                                <p className="font-medium text-green-900 dark:text-green-200 mb-1">
-                                                                    {calculation.applied_promos?.length || 0} Promo Diterapkan Otomatis
-                                                                </p>
-                                                                <p className="text-xs text-green-800 dark:text-green-300">
-                                                                    Sistem otomatis memilih semua promo yang berlaku
-                                                                </p>
-                                                            </AlertDescription>
-                                                        </Alert>
+                                                <Label className="text-base font-semibold mb-3 block">
+                                                    Promo Otomatis
+                                                </Label>
 
-                                                        {/* List all applied promos */}
-                                                        {calculation.applied_promos && calculation.applied_promos.length > 0 && (
-                                                            <div className="space-y-2">
-                                                                {calculation.applied_promos.map((promo, index) => (
-                                                                    <div 
-                                                                        key={promo.id} 
-                                                                        className="p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-green-200 dark:border-green-800"
-                                                                    >
-                                                                        <div className="flex items-start justify-between gap-3">
-                                                                            <div className="flex items-start gap-2 flex-1">
-                                                                                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold">
-                                                                                    {index + 1}
-                                                                                </div>
-                                                                                <div className="flex-1">
-                                                                                    <div className="flex items-center gap-2 mb-1">
-                                                                                        <Check className="h-4 w-4 text-green-600" />
-                                                                                        <p className="font-semibold text-gray-900 dark:text-gray-100">
-                                                                                            {promo.nama}
-                                                                                        </p>
+                                                {(() => {
+                                                    const promoInfo = getPromoInfo();
+
+                                                    if (!selectedCustomer) {
+                                                        return (
+                                                            <Alert className="border-gray-300 bg-gray-50 dark:bg-gray-900/10">
+                                                                <AlertCircle className="h-4 w-4 text-gray-500" />
+                                                                <AlertDescription className="text-gray-600 dark:text-gray-400">
+                                                                    Pilih customer terlebih dahulu untuk melihat promo yang tersedia
+                                                                </AlertDescription>
+                                                            </Alert>
+                                                        );
+                                                    }
+
+                                                    if (!promoInfo.hasEligible) {
+                                                        return (
+                                                            <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-900/10">
+                                                                <AlertCircle className="h-4 w-4 text-amber-600" />
+                                                                <AlertDescription>
+                                                                    <p className="font-medium text-amber-900 dark:text-amber-200 mb-1">
+                                                                        Tidak ada promo yang memenuhi syarat
+                                                                    </p>
+                                                                    <p className="text-sm text-amber-800 dark:text-amber-300">
+                                                                        {!selectedCustomer.is_member && promos.some(p => p.syarat_member_only && p.is_active) && (
+                                                                            <span>💡 Upgrade ke Member untuk mendapat akses promo eksklusif!</span>
+                                                                        )}
+                                                                        {calculation.base_for_discount === 0 && (
+                                                                            <span>Tambahkan item untuk mengecek promo yang tersedia</span>
+                                                                        )}
+                                                                    </p>
+                                                                </AlertDescription>
+                                                            </Alert>
+                                                        );
+                                                    }
+
+                                                    // Show ALL applied promos
+                                                    return (
+                                                        <div className="space-y-3">
+                                                            <Alert className="border-green-300 bg-green-50 dark:bg-green-900/10">
+                                                                <Check className="h-4 w-4 text-green-600" />
+                                                                <AlertDescription>
+                                                                    <p className="font-medium text-green-900 dark:text-green-200 mb-1">
+                                                                        {calculation.applied_promos?.length || 0} Promo Diterapkan Otomatis
+                                                                    </p>
+                                                                    <p className="text-xs text-green-800 dark:text-green-300">
+                                                                        Sistem otomatis memilih semua promo yang berlaku
+                                                                    </p>
+                                                                </AlertDescription>
+                                                            </Alert>
+
+                                                            {/* List all applied promos */}
+                                                            {calculation.applied_promos && calculation.applied_promos.length > 0 && (
+                                                                <div className="space-y-2">
+                                                                    {calculation.applied_promos.map((promo, index) => (
+                                                                        <div
+                                                                            key={promo.id}
+                                                                            className="p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-green-200 dark:border-green-800"
+                                                                        >
+                                                                            <div className="flex items-start justify-between gap-3">
+                                                                                <div className="flex items-start gap-2 flex-1">
+                                                                                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold">
+                                                                                        {index + 1}
                                                                                     </div>
-                                                                                    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                                                                                        <span>
-                                                                                            Diskon: {promo.jenis === 'percent' ? `${promo.nilai}%` : formatRupiah(promo.nilai)}
-                                                                                        </span>
-                                                                                        {promo.is_member_only && (
-                                                                                            <>
-                                                                                                <span>•</span>
-                                                                                                <Badge variant="outline" className="border-orange-400 text-orange-600 text-[10px] px-1.5 py-0">
-                                                                                                    <Crown className="h-2.5 w-2.5 mr-1" />
-                                                                                                    Member
-                                                                                                </Badge>
-                                                                                            </>
-                                                                                        )}
+                                                                                    <div className="flex-1">
+                                                                                        <div className="flex items-center gap-2 mb-1">
+                                                                                            <Check className="h-4 w-4 text-green-600" />
+                                                                                            <p className="font-semibold text-gray-900 dark:text-gray-100">
+                                                                                                {promo.nama}
+                                                                                            </p>
+                                                                                        </div>
+                                                                                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                                                                                            <span>
+                                                                                                Diskon: {promo.jenis === 'percent' ? `${promo.nilai}%` : formatRupiah(promo.nilai)}
+                                                                                            </span>
+                                                                                            {promo.is_member_only && (
+                                                                                                <>
+                                                                                                    <span>•</span>
+                                                                                                    <Badge variant="outline" className="border-orange-400 text-orange-600 text-[10px] px-1.5 py-0">
+                                                                                                        <Crown className="h-2.5 w-2.5 mr-1" />
+                                                                                                        Member
+                                                                                                    </Badge>
+                                                                                                </>
+                                                                                            )}
+                                                                                        </div>
                                                                                     </div>
                                                                                 </div>
-                                                                            </div>
-                                                                            <div className="text-right">
-                                                                                <p className="text-xs text-gray-500 mb-0.5">Hemat</p>
-                                                                                <p className="text-lg font-bold text-green-600">
-                                                                                    {formatRupiah(promo.amount)}
-                                                                                </p>
+                                                                                <div className="text-right">
+                                                                                    <p className="text-xs text-gray-500 mb-0.5">Hemat</p>
+                                                                                    <p className="text-lg font-bold text-green-600">
+                                                                                        {formatRupiah(promo.amount)}
+                                                                                    </p>
+                                                                                </div>
                                                                             </div>
                                                                         </div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-
-                                                        {/* Show available but not applied promos (if any) */}
-                                                        {promoInfo.promos.length > (calculation.applied_promos?.length || 0) && (
-                                                            <details className="text-xs text-gray-500">
-                                                                <summary className="cursor-pointer hover:text-gray-700">
-                                                                    Lihat {promoInfo.promos.length - (calculation.applied_promos?.length || 0)} promo lainnya yang tersedia
-                                                                </summary>
-                                                                <div className="mt-2 space-y-1">
-                                                                    {promoInfo.promos
-                                                                        .filter(p => !calculation.applied_promos?.some(ap => ap.id === p.id))
-                                                                        .map(promo => (
-                                                                            <div key={promo.id} className="p-2 bg-gray-50 rounded text-xs">
-                                                                                {promo.nama_promo} - {promo.jenis === 'percent' ? `${promo.diskon}%` : formatRupiah(promo.diskon)}
-                                                                                {promo.minimal_transaksi && ` (Min. ${formatRupiah(promo.minimal_transaksi)})`}
-                                                                            </div>
-                                                                        ))
-                                                                    }
+                                                                    ))}
                                                                 </div>
-                                                            </details>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })()}
+                                                            )}
 
-                                            <p className="text-xs text-center text-gray-500 mt-2">
-                                                <AlertCircle className="h-3 w-3 inline mr-1" />
-                                                Sistem otomatis memilih semua diskon yang tersedia (kecuali point yang tetap ditukar manual)
-                                            </p>
-                                        </div>
+                                                            {/* Show available but not applied promos (if any) */}
+                                                            {promoInfo.promos.length > (calculation.applied_promos?.length || 0) && (
+                                                                <details className="text-xs text-gray-500">
+                                                                    <summary className="cursor-pointer hover:text-gray-700">
+                                                                        Lihat {promoInfo.promos.length - (calculation.applied_promos?.length || 0)} promo lainnya yang tersedia
+                                                                    </summary>
+                                                                    <div className="mt-2 space-y-1">
+                                                                        {promoInfo.promos
+                                                                            .filter(p => !calculation.applied_promos?.some(ap => ap.id === p.id))
+                                                                            .map(promo => (
+                                                                                <div key={promo.id} className="p-2 bg-gray-50 rounded text-xs">
+                                                                                    {promo.nama_promo} - {promo.jenis === 'percent' ? `${promo.diskon}%` : formatRupiah(promo.diskon)}
+                                                                                    {promo.minimal_transaksi && ` (Min. ${formatRupiah(promo.minimal_transaksi)})`}
+                                                                                </div>
+                                                                            ))
+                                                                        }
+                                                                    </div>
+                                                                </details>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
+
+                                                <p className="text-xs text-center text-gray-500 mt-2">
+                                                    <AlertCircle className="h-3 w-3 inline mr-1" />
+                                                    Sistem otomatis memilih semua diskon yang tersedia (kecuali point yang tetap ditukar manual)
+                                                </p>
                                             </div>
+                                        </div>
 
-                                            <Separator />
+                                        <Separator />
 
                                         {/* Points redemption (TETAP MANUAL) */}
                                         {selectedCustomer && selectedCustomer.is_member && selectedCustomer.poin > 0 && (
