@@ -1,22 +1,22 @@
 import { Link, usePage } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import { Button } from '@/Components/ui/button';
-import { 
-    DropdownMenu, 
-    DropdownMenuContent, 
-    DropdownMenuItem, 
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
     DropdownMenuLabel,
-    DropdownMenuSeparator, 
-    DropdownMenuTrigger 
+    DropdownMenuSeparator,
+    DropdownMenuTrigger
 } from '@/Components/ui/dropdown-menu';
 import { Separator } from '@/Components/ui/separator';
-import { 
-    LayoutDashboard, 
-    Store, 
-    Package, 
-    Users, 
-    FileText, 
-    Settings, 
+import {
+    LayoutDashboard,
+    Store,
+    Package,
+    Users,
+    FileText,
+    Settings,
     Tag,
     CreditCard,
     UserCog,
@@ -72,13 +72,13 @@ export default function AuthenticatedLayout({ header, children }) {
             active: route().current('transaksi.*'),
             show: (isKasir || isAdmin) && (hasPermission('transaksi.view') || hasPermission('transaksi.create')),
         },
-        // OWNER & ADMIN: Laporan (TODO: implement later)
+        // OWNER, ADMIN, KASIR: Laporan
         {
             name: 'Laporan',
-            href: '#', // route('reports.index'),
+            href: route('laporan.index'), // route('reports.index'),
             icon: BarChart3,
-            active: false, // route().current('reports.*'),
-            show: (isOwner || isAdmin) && hasPermission('report.view'),
+            active: route().current('laporan.*'),
+            show: (isOwner || isAdmin || isKasir), // && hasPermission('report.view'),
         },
         // ADMIN ONLY: Master Data
         {
@@ -168,7 +168,7 @@ export default function AuthenticatedLayout({ header, children }) {
                             {item.name}
                         </div>
                     </div>
-                    {item.items.map((subItem) => 
+                    {item.items.map((subItem) =>
                         subItem.show && <NavItem key={subItem.name} item={subItem} />
                     )}
                 </div>
@@ -178,11 +178,10 @@ export default function AuthenticatedLayout({ header, children }) {
         return (
             <Link
                 href={item.href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                    item.active
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
-                }`}
+                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${item.active
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+                    }`}
             >
                 <item.icon className="h-4 w-4" />
                 {item.name}
@@ -209,7 +208,7 @@ export default function AuthenticatedLayout({ header, children }) {
 
                     {/* Navigation */}
                     <nav className="flex-1 space-y-1 px-2 py-4 overflow-y-auto">
-                        {menuItems.map((item) => 
+                        {menuItems.map((item) =>
                             item.show && <NavItem key={item.name} item={item} />
                         )}
                     </nav>
@@ -236,9 +235,8 @@ export default function AuthenticatedLayout({ header, children }) {
 
             {/* Mobile Sidebar */}
             <div
-                className={`fixed inset-0 z-40 md:hidden ${
-                    sidebarOpen ? 'block' : 'hidden'
-                }`}
+                className={`fixed inset-0 z-40 md:hidden ${sidebarOpen ? 'block' : 'hidden'
+                    }`}
             >
                 <div
                     className="fixed inset-0 bg-gray-600 bg-opacity-75"
@@ -266,7 +264,7 @@ export default function AuthenticatedLayout({ header, children }) {
 
                     {/* Mobile Navigation */}
                     <nav className="flex-1 space-y-1 px-2 py-4 overflow-y-auto">
-                        {menuItems.map((item) => 
+                        {menuItems.map((item) =>
                             item.show && <NavItem key={item.name} item={item} />
                         )}
                     </nav>

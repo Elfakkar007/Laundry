@@ -271,4 +271,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 });
 
-require __DIR__.'/auth.php';
+    // ========================================
+    // LAPORAN / REPORTS (All Authenticated)
+    // ========================================
+    Route::get('/laporan', [\App\Http\Controllers\LaporanController::class, 'index'])
+        ->name('laporan.index');
+        
+    require __DIR__.'/auth.php';
