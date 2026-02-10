@@ -1,0 +1,348 @@
+/* ══════════════════════════════════════════════════════════════
+   CUSTOM PRINT STYLES FOR LAUNDRY INVOICE
+   ══════════════════════════════════════════════════════════════ */
+
+@media print {
+
+    /* ═══ GLOBAL PRINT RESET ═══ */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+
+    body {
+        margin: 0;
+        padding: 0;
+        background: white !important;
+    }
+
+    /* Hide all UI elements */
+    nav,
+    aside,
+    header,
+    footer,
+    button,
+    .no-print,
+    [data-sonner-toaster],
+    .sonner-toaster,
+    .toaster,
+    [id*="sonner"],
+    [class*="Sonner"],
+    [class*="sonner"],
+    [data-sonner-toast],
+    [role="status"],
+    [role="alert"],
+    [class*="print:hidden"],
+    .AuthenticatedLayout-nav,
+    #sidebar,
+    .topbar,
+    .mobile-nav {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
+
+    /* Extreme Sonner Suppression */
+    li[data-sonner-toast],
+    section[data-sonner-toaster],
+    .sonner-toaster,
+    [id*="sonner-toaster"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        position: absolute !important;
+        top: -9999px !important;
+    }
+
+    /* Reset main layout containers */
+    .md\:pl-64,
+    [class*="md:pl-64"],
+    main,
+    .flex-1 {
+        padding: 0 !important;
+        margin: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+    }
+
+    /* ═══ SESSION-BASED PRINT PROTECTION ═══ */
+
+    /* Hide everything except the active print container inside the session wrapper */
+    .print-thermal-session>*:not(.print-thermal-container),
+    .print-a4-session>*:not(.print-a4-container) {
+        display: none !important;
+    }
+
+    /* Ensure specific session styles are applied */
+    .print-thermal-session .print-thermal-container {
+        display: block !important;
+        width: 80mm !important;
+        margin: 0 auto !important;
+    }
+
+    .print-a4-session .print-a4-container {
+        display: block !important;
+        width: 100% !important;
+        max-width: 210mm !important;
+        margin: 0 auto !important;
+    }
+
+    /* ═══ THERMAL RECEIPT STYLES (80mm width) ═══ */
+    .print-thermal {
+        width: 80mm !important;
+        max-width: 80mm !important;
+        margin: 0 auto;
+        padding: 0;
+        font-size: 12px;
+        line-height: 1.4;
+        color: #000 !important;
+        background: white !important;
+    }
+
+    /* Force single column for thermal */
+    .print-thermal .grid,
+    .print-thermal [class*="grid-cols"] {
+        display: block !important;
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Remove all shadows, borders, and backgrounds for thermal */
+    .print-thermal * {
+        box-shadow: none !important;
+        background: transparent !important;
+        border-radius: 0 !important;
+    }
+
+    /* Preserve only essential borders */
+    .print-thermal .border-t,
+    .print-thermal .border-b {
+        border-color: #000 !important;
+    }
+
+    /* ═══ A4 INVOICE STYLES ═══ */
+    .print-a4 {
+        width: 210mm !important;
+        max-width: 210mm !important;
+        min-height: 297mm;
+        margin: 0 auto;
+        padding: 20mm;
+        font-size: 11pt;
+        line-height: 1.5;
+        color: #000 !important;
+        background: white !important;
+    }
+
+    /* A4 layout optimizations */
+    .print-a4 h1 {
+        font-size: 28pt;
+        margin-bottom: 8pt;
+    }
+
+    .print-a4 h2 {
+        font-size: 20pt;
+        margin-bottom: 6pt;
+    }
+
+    .print-a4 h3 {
+        font-size: 14pt;
+        margin-bottom: 4pt;
+    }
+
+    .print-a4 table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 10pt 0;
+    }
+
+    .print-a4 table th,
+    .print-a4 table td {
+        padding: 6pt;
+        border-bottom: 1pt solid #ddd;
+    }
+
+    .print-a4 table thead th {
+        border-bottom: 2pt solid #000;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+
+    /* Remove all colors except black text and essential borders */
+    .print-a4 * {
+        color: #000 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border-color: #000 !important;
+    }
+
+    /* Preserve table borders */
+    .print-a4 table {
+        border: 1pt solid #000;
+    }
+
+    /* ═══ PAGE BREAKS ═══ */
+    .page-break-before {
+        page-break-before: always;
+    }
+
+    .page-break-after {
+        page-break-after: always;
+    }
+
+    .page-break-avoid {
+        page-break-inside: avoid;
+    }
+
+    /* Avoid breaking tables and important sections */
+    table,
+    .card,
+    .no-break {
+        page-break-inside: avoid;
+    }
+
+    /* ═══ COMMON OPTIMIZATIONS ═══ */
+
+    /* Remove all animations */
+    * {
+        animation: none !important;
+        transition: none !important;
+    }
+
+    /* Optimize text rendering */
+    body {
+        font-family: 'Arial', 'Helvetica', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Remove unnecessary spacing */
+    .print\\:p-0 {
+        padding: 0 !important;
+    }
+
+    .print\\:m-0 {
+        margin: 0 !important;
+    }
+
+    /* Ensure monospace for invoice numbers */
+    .font-mono {
+        font-family: 'Courier New', 'Courier', monospace !important;
+    }
+
+    /* ═══ SPECIFIC ELEMENT FIXES ═══ */
+
+    /* Status badges - convert to simple text */
+    @media print {
+
+        .badge,
+        [class*="Badge"] {
+            border: 1pt solid #000 !important;
+            padding: 2pt 6pt !important;
+            display: inline-block !important;
+            font-weight: bold !important;
+        }
+    }
+
+    /* Icons - make smaller or hide */
+    svg {
+        width: 12pt !important;
+        height: 12pt !important;
+        vertical-align: middle;
+    }
+
+    /* Buttons - hide completely */
+    button,
+    [role="button"],
+    .btn {
+        display: none !important;
+    }
+
+    /* Dialogs and overlays */
+    [role="dialog"],
+    [role="alertdialog"],
+    .dialog,
+    .modal,
+    .overlay {
+        display: none !important;
+    }
+
+    /* ═══ THERMAL-SPECIFIC FINAL TOUCHES ═══ */
+
+    /* Thermal receipt header */
+    .print-thermal h2 {
+        font-size: 18pt;
+        margin: 4pt 0;
+        text-align: center;
+    }
+
+    /* Thermal receipt body text */
+    .print-thermal p,
+    .print-thermal span,
+    .print-thermal td {
+        font-size: 9pt;
+    }
+
+    /* Thermal receipt totals */
+    .print-thermal .total {
+        font-size: 12pt;
+        font-weight: bold;
+        border-top: 2pt double #000 !important;
+        padding-top: 4pt;
+    }
+
+    /* ═══ A4-SPECIFIC FINAL TOUCHES ═══ */
+
+    /* A4 totals section */
+    .print-a4 .summary {
+        margin-top: 20pt;
+        padding-top: 10pt;
+        border-top: 2pt solid #000;
+    }
+
+    /* A4 grand total */
+    .print-a4 .grand-total {
+        font-size: 18pt;
+        font-weight: bold;
+        border-top: 3pt double #000 !important;
+        border-bottom: 3pt double #000 !important;
+        padding: 8pt 0;
+    }
+
+    /* ═══ FORCE PRINT OPTIMIZATION ═══ */
+
+    @page {
+        margin: 0;
+        size: auto;
+    }
+
+    /* For thermal receipts */
+    @page thermal {
+        size: 80mm auto;
+        margin: 5mm 0;
+    }
+
+    /* For A4 invoices */
+    @page a4 {
+        size: A4 portrait;
+        margin: 15mm;
+    }
+
+    /* Apply appropriate page size */
+    .print-thermal {
+        page: thermal;
+    }
+
+    .print-a4 {
+        page: a4;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   END OF PRINT STYLES
+   ══════════════════════════════════════════════════════════════ */

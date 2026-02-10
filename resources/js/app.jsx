@@ -21,7 +21,7 @@ createInertiaApp({
         root.render(
             <>
                 <App {...props} />
-                <Toaster position="top-right" richColors />
+                <Toaster position="top-right" richColors containerClassName="print:hidden" />
             </>
         );
     },

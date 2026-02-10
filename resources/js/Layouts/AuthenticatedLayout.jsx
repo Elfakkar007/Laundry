@@ -201,7 +201,7 @@ export default function AuthenticatedLayout({ header, children }) {
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
             {/* Sidebar - Desktop */}
-            <aside className="hidden md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col">
+            <aside className="hidden md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col print:hidden">
                 <div className="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
                     {/* Logo */}
                     <div className="flex h-16 items-center px-4 border-b border-gray-200 dark:border-gray-800">
@@ -244,7 +244,7 @@ export default function AuthenticatedLayout({ header, children }) {
 
             {/* Mobile Sidebar */}
             <div
-                className={`fixed inset-0 z-40 md:hidden ${sidebarOpen ? 'block' : 'hidden'
+                className={`fixed inset-0 z-40 md:hidden print:hidden ${sidebarOpen ? 'block' : 'hidden'
                     }`}
             >
                 <div
@@ -299,9 +299,9 @@ export default function AuthenticatedLayout({ header, children }) {
             </div>
 
             {/* Main Content */}
-            <div className="md:pl-64 flex flex-col flex-1">
+            <div className="md:pl-64 flex flex-col flex-1 print:pl-0">
                 {/* Top Navbar */}
-                <header className="sticky top-0 z-30 bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+                <header className="sticky top-0 z-30 bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 print:hidden">
                     <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
                         {/* Mobile Menu Button */}
                         <Button

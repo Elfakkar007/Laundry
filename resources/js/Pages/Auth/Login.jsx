@@ -21,7 +21,7 @@ export default function Login({ status }) {
     return (
         <>
             <Head title="Login" />
-            
+
             <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
                 <Card className="w-full max-w-md">
                     <CardHeader className="space-y-1 flex flex-col items-center">
@@ -30,7 +30,7 @@ export default function Login({ status }) {
                             Masukkan username dan password Anda
                         </CardDescription>
                     </CardHeader>
-                    
+
                     <CardContent>
                         {status && (
                             <div className="mb-4 text-sm font-medium text-green-600 dark:text-green-400 p-3 bg-green-50 dark:bg-green-900/20 rounded-md">
@@ -85,21 +85,14 @@ export default function Login({ status }) {
                                 </Label>
                             </div>
 
-                            <Button 
-                                type="submit" 
-                                className="w-full" 
+                            <Button
+                                type="submit"
+                                className="w-full"
                                 disabled={processing}
                             >
                                 {processing ? 'Memproses...' : 'Login'}
                             </Button>
                         </form>
-
-                        <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
-                            <p>Demo Credentials:</p>
-                            <p className="font-mono text-xs mt-1">
-                                owner/admin/kasir : password
-                            </p>
-                        </div>
                     </CardContent>
                 </Card>
             </div>

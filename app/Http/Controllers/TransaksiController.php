@@ -307,7 +307,23 @@ class TransaksiController extends Controller
         
         $validated = $request->validate([
             'dibayar' => 'required|in:' . implode(',', Transaksi::getAvailablePaymentStatuses()),
-            'jumlah_bayar' => 'nullable|numeric|min:0',
+            'jumlah_bayar' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                function ($attribute, $value, $fail) use ($request, $transaksi) {
+                    if ($request->input('dibayar') === Transaksi::DIBAYAR_LUNAS) {
+                        if ($value === null || $value === '') {
+                             $fail('Jumlah uang diterima wajib diisi jika status Lunas.');
+                             return;
+                        }
+                        
+                        if ((float) $value < (float) $transaksi->total_akhir) {
+                            $fail('Jumlah pembayaran kurang dari total tagihan.');
+                        }
+                    }
+                }
+            ],
         ]);
         
         DB::beginTransaction();
@@ -585,7 +601,14 @@ class TransaksiController extends Controller
 
             DB::commit();
 
-            return redirect()->route('transaksi.index')->with('success', 'Transaksi berhasil dibuat!');
+            $redirect = redirect()->route('transaksi.show', $transaksi->id)
+                ->with('success', 'Transaksi berhasil dibuat!');
+            
+            if ($validated['payment_action'] === 'bayar_lunas') {
+                $redirect->with('print_receipt', true);
+            }
+
+            return $redirect;
             
         } catch (\Exception $e) {
             DB::rollBack();
