@@ -233,7 +233,8 @@ class TransaksiController extends Controller
         
         return Inertia::render('Transaksi/Show', [
             'transaksi' => $transaksi,
-            'allowedNextStatuses' => $transaksi->getAllowedNextStatuses(),
+            // FIXED: Show ALL statuses to allow manual override/correction as requested
+            'allowedNextStatuses' => Transaksi::getAvailableStatuses(),
             'isDelivery' => $transaksi->isDelivery(),
         ]);
     }
@@ -259,10 +260,11 @@ class TransaksiController extends Controller
         ]);
         
         // Check if status transition is allowed
-        $allowedStatuses = $transaksi->getAllowedNextStatuses();
-        if (!in_array($validated['status'], $allowedStatuses)) {
-            return back()->with('error', 'Transisi status tidak diizinkan. Status yang diizinkan: ' . implode(', ', $allowedStatuses));
-        }
+        // RELAXED: Allow Any Status Change for manual correction
+        // $allowedStatuses = $transaksi->getAllowedNextStatuses();
+        // if (!in_array($validated['status'], $allowedStatuses)) {
+        //     return back()->with('error', 'Transisi status tidak diizinkan. Status yang diizinkan: ' . implode(', ', $allowedStatuses));
+        // }
         
         $oldStatus = $transaksi->status;
         $transaksi->update(['status' => $validated['status']]);
@@ -296,6 +298,7 @@ class TransaksiController extends Controller
         
         $validated = $request->validate([
             'dibayar' => 'required|in:' . implode(',', Transaksi::getAvailablePaymentStatuses()),
+            'jumlah_bayar' => 'nullable|numeric|min:0',
         ]);
         
         DB::beginTransaction();
@@ -305,10 +308,18 @@ class TransaksiController extends Controller
                            $oldDibayar !== Transaksi::DIBAYAR_LUNAS;
             
             // Update payment status
-            $transaksi->update([
+            $updateData = [
                 'dibayar' => $validated['dibayar'],
                 'tgl_bayar' => $validated['dibayar'] === Transaksi::DIBAYAR_LUNAS ? now() : null,
-            ]);
+            ];
+
+            // If paying now, save amount and change
+            if ($isNewlyPaid && isset($validated['jumlah_bayar'])) {
+                $updateData['total_bayar'] = $validated['jumlah_bayar'];
+                $updateData['kembalian'] = max(0, $validated['jumlah_bayar'] - $transaksi->total_akhir);
+            }
+
+            $transaksi->update($updateData);
             
             // Award points if newly paid and customer is member
             if ($isNewlyPaid && $transaksi->customer && $transaksi->customer->is_member) {
@@ -363,7 +374,7 @@ class TransaksiController extends Controller
      * Store a newly created transaction.
      * NEW: Supports multiple automatic promo stacking
      */
-    public function store(Request $request): RedirectResponse
+     public function store(Request $request): RedirectResponse
     {
         $this->authorizePermission('transaksi.create');
 
@@ -382,25 +393,18 @@ class TransaksiController extends Controller
             'surcharge_distances' => 'nullable|array',
             'surcharge_distances.*' => 'numeric|min:0',
             'shipping_id' => 'nullable|exists:surcharges,id',
-            // Allow both naming conventions, prioritize distance_km
             'shipping_distance' => 'nullable|numeric|min:0',
             'distance_km' => 'nullable|numeric|min:0',
-            
             'redeem_points' => 'nullable|integer|min:0',
             'payment_action' => 'required|in:bayar_lunas,bayar_nanti',
             'jumlah_bayar' => 'nullable|numeric|min:0',
             
-            // New Location Fields
+            // Location Fields
             'customer_lat' => 'nullable|numeric|between:-90,90',
             'customer_lng' => 'nullable|numeric|between:-180,180',
             'alamat_lengkap' => 'nullable|string',
             'catatan_lokasi' => 'nullable|string',
             'shipping_cost' => 'nullable|numeric|min:0',
-            
-            // Legacy fields (optional support)
-            'alamat_update' => 'nullable|string',
-            'latitude_update' => 'nullable|numeric|between:-90,90',
-            'longitude_update' => 'nullable|numeric|between:-180,180',
         ], [
             'items.required' => 'Minimal harus ada 1 item',
             'items.min' => 'Minimal harus ada 1 item',
@@ -416,85 +420,105 @@ class TransaksiController extends Controller
         try {
             DB::beginTransaction();
 
-            // Determine effective distance for calculation
+            // Resolve shipping distance
             $shippingDistance = $validated['distance_km'] ?? $validated['shipping_distance'] ?? 0;
 
-            // NEW: Calculate with automatic multiple promos
+            // Calculate totals
             $calculation = $this->calculateTransactionTotal(
                 $validated['items'],
                 $validated['surcharges'] ?? [],
                 $validated['surcharge_distances'] ?? [],
                 $validated['shipping_id'] ?? null,
-                $shippingDistance, // Use the resolved distance
+                $shippingDistance,
                 $validated['redeem_points'] ?? 0,
                 $customer
             );
 
-            // #region agent log
-            $logPath = base_path('.cursor/debug.log');
-            $logEntry = json_encode([
-                'location' => 'TransaksiController.php:store-after-calc',
-                'message' => 'Backend received and calculated',
-                'data' => [
-                    'shipping_distance_received' => $shippingDistance, // Updated to use resolved distance
-                    'shipping_cost_calc' => $calculation['shipping_cost'],
-                    'total_akhir_calc' => $calculation['total_akhir'],
-                    'biaya_tambahan_stored' => $calculation['total_surcharge'] + $calculation['shipping_cost'],
-                ],
-                'timestamp' => (int) (microtime(true) * 1000),
-                'hypothesisId' => 'H5',
-            ]) . "\n";
-            @file_put_contents($logPath, $logEntry, FILE_APPEND | LOCK_EX);
-            // #endregion
+            // Parse dates with timezone
+        $tz = 'Asia/Jakarta';
+        $tgl = Carbon::parse($validated['tgl'], $tz);
+        $batasWaktu = isset($validated['batas_waktu']) && $validated['batas_waktu'] !== ''
+            ? Carbon::parse($validated['batas_waktu'], $tz)
+            : null;
 
-            // Parse tgl & batas_waktu sebagai waktu lokal (WIB) agar jam yang diinput
-            // user (mis. 11:25) tidak dianggap UTC dan tampil salah (18:25)
-            $tz = 'Asia/Jakarta';
-            $tgl = Carbon::parse($validated['tgl'], $tz);
-            $batasWaktu = isset($validated['batas_waktu']) && $validated['batas_waktu'] !== ''
-                ? Carbon::parse($validated['batas_waktu'], $tz)
-                : null;
+        // Prepare transaction data template
+        $transactionDataTemplate = [
+            'id_outlet' => $validated['id_outlet'],
+            // 'kode_invoice' => GENERATED_INSIDE_LOOP,
+            'id_customer' => $validated['id_customer'], 
+            'tgl' => $tgl,
+            'batas_waktu' => $batasWaktu, 
+            'tgl_bayar' => $validated['payment_action'] === 'bayar_lunas' ? now() : null,
+            
+            // Financial fields
+            'biaya_tambahan' => $calculation['total_surcharge'] ?? 0,
+            'diskon' => $calculation['total_diskon'] ?? 0,
+            'diskon_detail' => $calculation['diskon_detail'] ?? null,
+            'pajak' => $calculation['pajak_amount'] ?? 0,
+            'total_akhir' => $calculation['total_akhir'] ?? 0,
+            
+            'status' => Transaksi::STATUS_BARU,
+            'dibayar' => $validated['payment_action'] === 'bayar_lunas' 
+                ? Transaksi::DIBAYAR_LUNAS 
+                : Transaksi::DIBAYAR_BELUM,
+            'total_bayar' => $validated['payment_action'] === 'bayar_lunas' ? ($validated['jumlah_bayar'] ?? 0) : 0,
+            'kembalian' => $validated['payment_action'] === 'bayar_lunas' 
+                ? max(0, ($validated['jumlah_bayar'] ?? 0) - ($calculation['total_akhir'] ?? 0)) 
+                : 0,
+            'id_user' => $user->id,
+            
+            // Location fields
+            'customer_lat' => $validated['customer_lat'] ?? null,
+            'customer_lng' => $validated['customer_lng'] ?? null,
+            'alamat_lengkap' => $validated['alamat_lengkap'] ?? null,
+            'catatan_lokasi' => $validated['catatan_lokasi'] ?? null,
+            'distance_km' => $shippingDistance > 0 ? $shippingDistance : 0,
+            'shipping_cost' => $calculation['shipping_cost'] ?? 0,
+        ];
 
-            // Create transaction
-            $transaksi = Transaksi::create([
-                'id_outlet' => $validated['id_outlet'],
-                'kode_invoice' => $this->generateInvoiceCode($validated['id_outlet']),
-                'id_customer' => $validated['id_customer'],
-                'tgl' => $tgl,
-                'batas_waktu' => $batasWaktu,
-                'tgl_bayar' => $validated['payment_action'] === 'bayar_lunas' ? now() : null,
-                'biaya_tambahan' => $calculation['total_surcharge'] + $calculation['shipping_cost'], // Stores ONLY pure shipping cost + surcharges
-                'diskon' => $calculation['total_diskon'],
-                'diskon_detail' => $calculation['diskon_detail'], // NEW: Save detailed discount info
-                'pajak' => $calculation['pajak_amount'],
-                'status' => Transaksi::STATUS_BARU,
-                'dibayar' => $validated['payment_action'] === 'bayar_lunas' 
-                    ? Transaksi::DIBAYAR_LUNAS 
-                    : Transaksi::DIBAYAR_BELUM,
-                'id_user' => $user->id,
+        // RETRY LOGIC FOR INVOICE GENERATION (Concurrency Handling)
+        $transaksi = null;
+        $maxRetries = 3;
+        $attempt = 0;
+
+        while ($transaksi === null && $attempt < $maxRetries) {
+            try {
+                // Generate invoice code
+                $invoiceCode = $this->generateInvoiceCode($validated['id_outlet']);
                 
-                // NEW FIELDS
-                'customer_lat' => $validated['customer_lat'] ?? null,
-                'customer_lng' => $validated['customer_lng'] ?? null,
-                'alamat_lengkap' => $validated['alamat_lengkap'] ?? null,
-                'catatan_lokasi' => $validated['catatan_lokasi'] ?? null,
-                'distance_km' => $shippingDistance,
-                // We prefer the calculated cost to ensure consistency, 
-                // but if we TRUST the frontend completely we could use $validated['shipping_cost']
-                // For now, let's use the calculated one to be safe and consistent with total_akhir
-                'shipping_cost' => $calculation['shipping_cost'], 
-            ]);
+                // Set invoice code
+                $transactionData = $transactionDataTemplate;
+                $transactionData['kode_invoice'] = $invoiceCode;
+
+                // Attempt to create transaction
+                $transaksi = Transaksi::create($transactionData);
+                
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Check for Unique Constraint Violation (SQLSTATE 23000 / 23505)
+                if ($e->getCode() === '23000' || $e->getCode() === '23505') {
+                    $attempt++;
+                    if ($attempt >= $maxRetries) {
+                        throw $e; // Give up after max retries
+                    }
+                    // Wait a bit before retrying (backoff)
+                    usleep(100000); // 100ms
+                    continue; 
+                }
+                throw $e; // Rethrow other errors
+            }
+        }
 
             // Create detail transactions
             foreach ($validated['items'] as $item) {
                 $transaksi->detailTransaksis()->create([
                     'id_paket' => $item['id_paket'],
                     'qty' => $item['qty'],
+                    'keterangan' => $item['keterangan'] ?? null,
                 ]);
             }
 
             // Handle points redemption
-            if ($customer && $calculation['actual_redeem_points'] > 0) {
+            if ($customer && ($calculation['actual_redeem_points'] ?? 0) > 0) {
                 $customer->addPoints(-$calculation['actual_redeem_points'], 'redeem', [
                     'discount_amount' => $calculation['diskon_poin'],
                     'reference_type' => 'App\Models\Transaksi',
@@ -506,10 +530,10 @@ class TransaksiController extends Controller
 
             // Award points if paid
             if ($validated['payment_action'] === 'bayar_lunas' && $customer && $customer->is_member) {
-                $earnedPoints = $calculation['earned_points'];
+                $earnedPoints = $calculation['earned_points'] ?? 0;
                 if ($earnedPoints > 0) {
                     $customer->addPoints($earnedPoints, 'earn', [
-                        'transaction_amount' => $calculation['gross_total_for_points'],
+                        'transaction_amount' => $calculation['gross_total_for_points'] ?? 0,
                         'reference_type' => 'App\Models\Transaksi',
                         'reference_id' => $transaksi->id,
                         'notes' => "Pembayaran transaksi {$transaksi->kode_invoice}",
@@ -518,30 +542,16 @@ class TransaksiController extends Controller
                 }
             }
 
-            // Update alamat dan koordinat customer untuk semua (member & non-member); non-member bisa jadi member nanti
-            if ($customer) {
-                $updateData = [];
-
-                // 1. Cek field baru (alamat_lengkap)
-                if (!empty($validated['alamat_lengkap'])) {
-                    $updateData['alamat'] = $validated['alamat_lengkap'];
-                    if (isset($validated['customer_lat']) && isset($validated['customer_lng'])) {
-                        $updateData['latitude'] = $validated['customer_lat'];
-                        $updateData['longitude'] = $validated['customer_lng'];
-                    }
-                } 
-                // 2. Fallback check field lama (alamat_update)
-                else if (!empty($validated['alamat_update'])) {
-                    $updateData['alamat'] = $validated['alamat_update'];
-                    if (isset($validated['latitude_update']) && isset($validated['longitude_update'])) {
-                        $updateData['latitude'] = $validated['latitude_update'];
-                        $updateData['longitude'] = $validated['longitude_update'];
-                    }
+            // Update customer address if provided
+            if ($customer && !empty($validated['alamat_lengkap'])) {
+                $updateData = ['alamat' => $validated['alamat_lengkap']];
+                
+                if (isset($validated['customer_lat']) && isset($validated['customer_lng'])) {
+                    $updateData['latitude'] = $validated['customer_lat'];
+                    $updateData['longitude'] = $validated['customer_lng'];
                 }
-
-                if (!empty($updateData)) {
-                    $customer->update($updateData);
-                }
+                
+                $customer->update($updateData);
             }
 
             // Auto-member check
@@ -556,17 +566,27 @@ class TransaksiController extends Controller
 
                     if ($completedCount >= $requiredTransactions) {
                         $customer->update(['is_member' => true]);
-                         session()->flash('success', "🎉 Selamat! Customer otomatis diupgrade ke Member setelah {$requiredTransactions} transaksi!");
+                        session()->flash('success', "🎉 Selamat! Customer otomatis diupgrade ke Member setelah {$requiredTransactions} transaksi!");
                     }
                 }
             }
+
             DB::commit();
 
             return redirect()->route('transaksi.index')->with('success', 'Transaksi berhasil dibuat!');
+            
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Transaction creation failed: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Gagal membuat transaksi: ' . $e->getMessage());
+            Log::error('Transaction creation failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $user->id,
+                'validated_data' => $validated,
+            ]);
+            
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Gagal membuat transaksi: ' . $e->getMessage());
         }
     }
 
@@ -614,12 +634,16 @@ class TransaksiController extends Controller
     // -------------------------------------------------------- generateInvoice
     /**
      * Generate unique invoice code
+     * FIXED: Use LIV[OutletID][Date][Seq] format (Outlet Scoped)
      */
     private function generateInvoiceCode($outletId): string
     {
         $today = now()->format('Ymd');
-        $prefix = "INV-{$today}";
+        // Prefix: LIV + OutletID + Date
+        // Example: LIV120260210
+        $prefix = "LIV{$outletId}{$today}";
 
+        // Check sequence for THIS outlet only
         $lastInvoice = Transaksi::where('id_outlet', $outletId)
             ->where('kode_invoice', 'like', "{$prefix}%")
             ->orderBy('kode_invoice', 'desc')
@@ -632,13 +656,12 @@ class TransaksiController extends Controller
             $newNumber = 1;
         }
 
-        return $prefix . '-' . str_pad($newNumber, 4, '0', STR_PAD_LEFT);
+        return $prefix . str_pad($newNumber, 4, '0', STR_PAD_LEFT);
     }
 
-    // --------------------------------------------------------- calculateTotal
     /**
-     * Calculate transaction total with AUTOMATIC MULTIPLE PROMOS
-     * NEW: Automatically applies all eligible stackable promos
+     * Calculate transaction total with proper null handling
+     * FIXED: Ensure all return values have defaults
      */
     private function calculateTransactionTotal(
         array $items,
@@ -667,23 +690,38 @@ class TransaksiController extends Controller
             $totalSurcharge += $surcharge->calculateAmount($subtotalItems, $distance);
         }
 
-        // Calculate shipping separately
+        // Step 3: Calculate shipping separately
         $shippingCost = 0;
         if ($shippingId) {
             $shipping = Surcharge::find($shippingId);
             if ($shipping && $shipping->isShipping()) {
-                $shippingCost = $shipping->calculateAmount($subtotalItems, $shippingDistance);
+                if ($shipping->min_order_total && $subtotalItems >= $shipping->min_order_total) {
+                    $shippingCost = 0; // Free shipping
+                } else {
+                    switch ($shipping->calculation_type) {
+                        case 'percent':
+                            $shippingCost = ($subtotalItems * $shipping->nominal) / 100;
+                            break;
+                        case 'distance':
+                            $shippingCost = $shipping->nominal * $shippingDistance;
+                            break;
+                        case 'fixed':
+                        default:
+                            $shippingCost = floatval($shipping->nominal);
+                            break;
+                    }
+                }
             }
         }
 
-        // Base for discount = Items + Surcharges ONLY (exclude shipping)
+        // Base for discount = Items + Surcharges (exclude shipping)
         $baseForDiscount = $subtotalItems + $totalSurcharge;
         $grossTotalForPoints = $baseForDiscount;
 
-        // NEW: Automatic multiple promo application
+        // Apply automatic multiple promos
         $promoResult = Promo::calculateStackedDiscounts($customer, $baseForDiscount);
-        $diskonPromo = $promoResult['total_discount'];
-        $appliedPromos = $promoResult['discounts'];
+        $diskonPromo = $promoResult['total_discount'] ?? 0;
+        $appliedPromos = $promoResult['discounts'] ?? [];
 
         // Points redemption with clamping
         $pointsRedeemValue = (float) Setting::getValue('points_redeem_value', 500);
@@ -701,13 +739,13 @@ class TransaksiController extends Controller
         // Add promo discounts
         foreach ($appliedPromos as $promo) {
             $diskonDetail[] = [
-                'id' => $promo['id'],
+                'id' => $promo['id'] ?? null,
                 'type' => 'promo',
-                'nama' => $promo['nama'],
-                'jenis' => $promo['jenis'],
-                'nilai' => $promo['nilai'],
-                'amount' => $promo['amount'],
-                'is_member_only' => $promo['is_member_only'],
+                'nama' => $promo['nama'] ?? 'Promo',
+                'jenis' => $promo['jenis'] ?? 'fixed',
+                'nilai' => $promo['nilai'] ?? 0,
+                'amount' => $promo['amount'] ?? 0,
+                'is_member_only' => $promo['is_member_only'] ?? false,
             ];
         }
 
@@ -725,7 +763,7 @@ class TransaksiController extends Controller
         $totalDiskon = $diskonPromo + $diskonPoin;
         $totalSetelahDiskon = max(0, $baseForDiscount - $totalDiskon);
 
-        // Add shipping AFTER discount applied
+        // Add shipping AFTER discount
         $totalDenganShipping = $totalSetelahDiskon + $shippingCost;
 
         // Calculate tax
@@ -736,7 +774,7 @@ class TransaksiController extends Controller
         // Total akhir
         $totalAkhir = $totalDenganShipping + $pajakAmount;
 
-        // Points earned from gross total
+        // Points earned
         $earnedPoints = 0;
         if ($customer && $customer->is_member && Setting::getValue('points_enabled', true)) {
             $earnedPoints = Customer::calculatePointsFromAmount($grossTotalForPoints);
@@ -751,8 +789,8 @@ class TransaksiController extends Controller
             'diskon_promo' => $diskonPromo,
             'diskon_poin' => $diskonPoin,
             'total_diskon' => $totalDiskon,
-            'diskon_detail' => $diskonDetail, // NEW
-            'applied_promos' => $appliedPromos, // NEW
+            'diskon_detail' => $diskonDetail,
+            'applied_promos' => $appliedPromos,
             'total_setelah_diskon' => $totalSetelahDiskon,
             'total_dengan_shipping' => $totalDenganShipping,
             'pajak_rate' => $taxRate,

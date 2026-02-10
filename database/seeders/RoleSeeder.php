@@ -35,7 +35,7 @@ class RoleSeeder extends Seeder
             'customer.view', 'customer.create', 'customer.update', 'customer.delete',
             
             // Transaksi (Admin & Kasir)
-            'transaksi.view', 'transaksi.create', 'transaksi.detail', // Update/Delete dilarang di laundry biasanya, kecuali void
+            'transaksi.view', 'transaksi.create', 'transaksi.detail', 'transaksi.edit', // Update/Delete dilarang di laundry biasanya, kecuali void
             
             // Laporan (Semua akses tapi beda scope)
             'report.view',
@@ -68,7 +68,7 @@ class RoleSeeder extends Seeder
             'dashboard.view',
             'customer.view', 'customer.create', 'customer.update', // Registrasi Pelanggan
             'paket.view', // Hanya lihat paket untuk transaksi
-            'transaksi.view', 'transaksi.create', 'transaksi.detail', // Entri Transaksi
+            'transaksi.view', 'transaksi.create', 'transaksi.detail', 'transaksi.edit', // Entri Transaksi + Update Status
             'report.view', // Laporan shift dia sendiri (opsional)
         ]);
 

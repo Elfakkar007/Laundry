@@ -46,6 +46,8 @@ class Transaksi extends Model
         'catatan_lokasi',
         'distance_km',
         'shipping_cost',
+        'total_bayar',
+        'kembalian',
     ];
 
     protected function casts(): array
@@ -61,6 +63,8 @@ class Transaksi extends Model
             'total_akhir' => 'decimal:2',
             'shipping_cost' => 'decimal:2',
             'distance_km' => 'decimal:2',
+            'total_bayar' => 'decimal:2',
+            'kembalian' => 'decimal:2',
         ];
     }
 
@@ -117,7 +121,7 @@ class Transaksi extends Model
      */
     public function isDelivery(): bool
     {
-        return $this->shipping_id !== null;
+        return $this->shipping_cost > 0 || $this->distance_km > 0;
     }
 
     /**
@@ -179,9 +183,7 @@ class Transaksi extends Model
 
     /**
      * Accessor untuk total sebelum diskon
-     * CATATAN: biaya_tambahan di database sudah INCLUDE shipping cost
-     * karena di TransaksiController->store(), kita set:
-     * 'biaya_tambahan' => $calculation['total_surcharge'] + $calculation['shipping_cost']
+     * FIXED: shipping_cost sekarang terpisah dari biaya_tambahan
      */
     public function getTotalSebelumDiskonAttribute(): float
     {
@@ -189,39 +191,51 @@ class Transaksi extends Model
             return $detail->qty * $detail->paket->harga;
         });
         
-        // biaya_tambahan sudah include surcharge + shipping
-        return $subtotal + $this->biaya_tambahan;
+        // biaya_tambahan = surcharge saja (tanpa shipping)
+        // shipping_cost = ongkir (terpisah)
+        return $subtotal + (float) $this->biaya_tambahan + (float) $this->shipping_cost;
     }
 
     /**
      * Accessor untuk total akhir.
-     * FIXED: Pajak harus ditambahkan SETELAH semua komponen (termasuk shipping)
+     * CRITICAL FIX: shipping_cost HARUS ditambahkan secara eksplisit
      * 
-     * Flow perhitungan:
+     * Flow perhitungan yang BENAR:
      * 1. Subtotal items
-     * 2. + Biaya tambahan (surcharge + shipping)
-     * 3. - Diskon
-     * 4. + Pajak (dari hasil step 3)
+     * 2. + Biaya tambahan (surcharge saja, TANPA shipping)
+     * 3. + Shipping cost (terpisah, field sendiri)
+     * 4. - Diskon
+     * 5. + Pajak
      * = Total Akhir
      */
     public function getTotalAkhirAttribute(): float
     {
-        // Subtotal items dari detail transaksi
+        // CRITICAL: Cek dulu apakah total_akhir sudah disimpan di database
+        // Jika sudah ada, gunakan nilai dari DB (untuk backward compatibility)
+        $dbValue = $this->attributes['total_akhir'] ?? null;
+        if ($dbValue !== null && $dbValue > 0) {
+            return (float) $dbValue;
+        }
+
+        // Jika belum ada di DB, hitung manual (untuk transaksi lama sebelum migrasi)
+        // 1. Subtotal items
         $subtotal = $this->detailTransaksis->sum(function ($detail) {
-            return $detail->qty * $detail->paket->harga;
+            return $detail->qty * ($detail->paket->harga ?? 0);
         });
         
-        // Base = subtotal + biaya_tambahan (yang sudah include surcharge + shipping)
+        // 2. + Biaya tambahan (surcharge only, tanpa shipping)
         $base = $subtotal + (float) $this->biaya_tambahan;
         
-        // Setelah diskon
-        $afterDiscount = $base - (float) $this->diskon;
+        // 3. + Shipping cost (CRITICAL: ini yang hilang di versi sebelumnya!)
+        $baseWithShipping = $base + (float) $this->shipping_cost;
         
-        // Total akhir = after discount + pajak
-        // Pajak di DB sudah dalam bentuk nominal (bukan persen), hasil perhitungan di controller
+        // 4. - Diskon
+        $afterDiscount = $baseWithShipping - (float) $this->diskon;
+        
+        // 5. + Pajak
         $totalAkhir = $afterDiscount + (float) $this->pajak;
         
-        return $totalAkhir;
+        return max(0, $totalAkhir); // Tidak boleh negatif
     }
 
     /**
@@ -235,7 +249,7 @@ class Transaksi extends Model
 
         // Filter only promo discounts (exclude points)
         return array_filter($this->diskon_detail, function($discount) {
-            return isset($discount['id']) && $discount['id'] !== 'points';
+            return isset($discount['type']) && $discount['type'] === 'promo';
         });
     }
 
@@ -249,7 +263,7 @@ class Transaksi extends Model
         }
 
         foreach ($this->diskon_detail as $discount) {
-            if (isset($discount['id']) && $discount['id'] === 'points') {
+            if (isset($discount['type']) && $discount['type'] === 'points') {
                 return $discount;
             }
         }
