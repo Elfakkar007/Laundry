@@ -8,6 +8,16 @@ import { Badge } from '@/Components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/Components/ui/alert-dialog';
 import { Switch } from '@/Components/ui/switch';
 import { toast } from 'sonner';
 import { Pencil, Trash2, Plus, Search, DollarSign, Percent, CreditCard, MapPin, Gift, Truck, Package } from 'lucide-react';
@@ -18,6 +28,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
     const [statusFilter, setStatusFilter] = useState(filters.status_filter || 'all');
     const [categoryFilter, setCategoryFilter] = useState(filters.category_filter || 'all'); // NEW
+    const [deleteItem, setDeleteItem] = useState(null);
 
     const { data, setData, post, put, processing, errors, reset } = useForm({
         nama: '',
@@ -94,9 +105,10 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
 
     const handleDelete = (surcharge) => {
         const categoryLabel = surcharge.category === 'shipping' ? 'ongkir' : 'biaya';
-        if (confirm(`Yakin ingin menghapus ${categoryLabel} "${surcharge.nama}"?`)) {
-            router.delete(route('surcharges.destroy', surcharge.id));
-        }
+        setDeleteItem({
+            message: `Yakin ingin menghapus ${categoryLabel} "${surcharge.nama}"?`,
+            route: route('surcharges.destroy', surcharge.id)
+        });
     };
 
     const handleToggleActive = (surcharge) => {
@@ -105,7 +117,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
 
     const handleSearch = (e) => {
         e.preventDefault();
-        router.get(route('surcharges.index'), { 
+        router.get(route('surcharges.index'), {
             search: searchTerm,
             status_filter: statusFilter,
             category_filter: categoryFilter // NEW
@@ -117,7 +129,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
 
     const handleFilterChange = (value) => {
         setStatusFilter(value);
-        router.get(route('surcharges.index'), { 
+        router.get(route('surcharges.index'), {
             search: searchTerm,
             status_filter: value,
             category_filter: categoryFilter // NEW
@@ -130,7 +142,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
     // NEW: Handle category filter
     const handleCategoryFilterChange = (value) => {
         setCategoryFilter(value);
-        router.get(route('surcharges.index'), { 
+        router.get(route('surcharges.index'), {
             search: searchTerm,
             status_filter: statusFilter,
             category_filter: value
@@ -141,7 +153,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
     };
 
     const formatNominal = (nominal, type) => {
-        switch(type) {
+        switch (type) {
             case 'percent':
                 return `${nominal}%`;
             case 'distance':
@@ -162,7 +174,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
     };
 
     const getTypeIcon = (type) => {
-        switch(type) {
+        switch (type) {
             case 'percent':
                 return <Percent className="h-3 w-3" />;
             case 'distance':
@@ -184,7 +196,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
 
     // Get label for nominal input based on calculation type
     const getNominalLabel = () => {
-        switch(data.calculation_type) {
+        switch (data.calculation_type) {
             case 'percent':
                 return 'Persentase (%)';
             case 'distance':
@@ -223,7 +235,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                         <Search className="h-4 w-4" />
                                     </Button>
                                 </form>
-                                
+
                                 <div className="flex gap-2">
                                     {/* NEW: Category Filter */}
                                     <Select value={categoryFilter} onValueChange={handleCategoryFilterChange}>
@@ -290,7 +302,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                             </TableRow>
                                         ) : (
                                             surcharges.data.map((surcharge, index) => {
-                                                const isFree = surcharge.min_order_total && 
+                                                const isFree = surcharge.min_order_total &&
                                                     surcharge.min_order_total > 0;
 
                                                 return (
@@ -308,9 +320,9 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                                         </TableCell>
                                                         {/* NEW: Category Column */}
                                                         <TableCell className="text-center">
-                                                            <Badge 
+                                                            <Badge
                                                                 variant="outline"
-                                                                className={surcharge.category === 'shipping' 
+                                                                className={surcharge.category === 'shipping'
                                                                     ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400'
                                                                     : 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
                                                                 }
@@ -319,8 +331,8 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                                             </Badge>
                                                         </TableCell>
                                                         <TableCell className="text-center">
-                                                            <Badge 
-                                                                variant="outline" 
+                                                            <Badge
+                                                                variant="outline"
                                                                 className={`flex items-center gap-1 w-fit mx-auto ${getTypeBadge(surcharge.calculation_type).className}`}
                                                             >
                                                                 {getTypeIcon(surcharge.calculation_type)}
@@ -417,7 +429,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                             )}
                         </DialogTitle>
                     </DialogHeader>
-                    
+
                     <form onSubmit={handleSubmit}>
                         <div className="space-y-4">
                             {/* NEW: Category Selection */}
@@ -450,7 +462,7 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                                 )}
                                 {/* NEW: Warning about points */}
                                 <p className="mt-1 text-xs text-gray-500">
-                                    {data.category === 'shipping' 
+                                    {data.category === 'shipping'
                                         ? '⚠️ Ongkir TIDAK akan dihitung untuk perolehan poin member'
                                         : 'ℹ️ Biaya tambahan akan dihitung dalam perolehan poin member'
                                     }
@@ -610,6 +622,32 @@ export default function SurchargesIndex({ surcharges, filters, flash }) {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!deleteItem} onOpenChange={() => setDeleteItem(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {deleteItem?.message}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deleteItem?.route) {
+                                    router.delete(deleteItem.route);
+                                }
+                                setDeleteItem(null);
+                            }}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Hapus
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </AuthenticatedLayout>
     );
 }

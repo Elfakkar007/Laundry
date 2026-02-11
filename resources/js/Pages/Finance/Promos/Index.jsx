@@ -8,6 +8,16 @@ import { Badge } from '@/Components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/Components/ui/alert-dialog';
 import { Switch } from '@/Components/ui/switch';
 import { toast } from 'sonner';
 import { Pencil, Trash2, Plus, Search, Tag, Crown, Calendar, ShoppingCart, DollarSign, Percent } from 'lucide-react';
@@ -17,6 +27,7 @@ export default function PromosIndex({ promos, filters, flash }) {
     const [editingPromo, setEditingPromo] = useState(null);
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
     const [statusFilter, setStatusFilter] = useState(filters.status_filter || 'all');
+    const [deleteItem, setDeleteItem] = useState(null);
 
     const { data, setData, post, put, processing, errors, reset } = useForm({
         nama_promo: '',
@@ -82,9 +93,10 @@ export default function PromosIndex({ promos, filters, flash }) {
     };
 
     const handleDelete = (promo) => {
-        if (confirm(`Yakin ingin menghapus promo "${promo.nama_promo}"?`)) {
-            router.delete(route('promos.destroy', promo.id));
-        }
+        setDeleteItem({
+            message: `Yakin ingin menghapus promo "${promo.nama_promo}"?`,
+            route: route('promos.destroy', promo.id)
+        });
     };
 
     const handleToggleActive = (promo) => {
@@ -93,9 +105,9 @@ export default function PromosIndex({ promos, filters, flash }) {
 
     const handleSearch = (e) => {
         e.preventDefault();
-        router.get(route('promos.index'), { 
+        router.get(route('promos.index'), {
             search: searchTerm,
-            status_filter: statusFilter 
+            status_filter: statusFilter
         }, {
             preserveState: true,
             replace: true,
@@ -104,9 +116,9 @@ export default function PromosIndex({ promos, filters, flash }) {
 
     const handleFilterChange = (value) => {
         setStatusFilter(value);
-        router.get(route('promos.index'), { 
+        router.get(route('promos.index'), {
             search: searchTerm,
-            status_filter: value 
+            status_filter: value
         }, {
             preserveState: true,
             replace: true,
@@ -190,7 +202,7 @@ export default function PromosIndex({ promos, filters, flash }) {
                                         <Search className="h-4 w-4" />
                                     </Button>
                                 </form>
-                                
+
                                 <div className="flex gap-2">
                                     <Select value={statusFilter} onValueChange={handleFilterChange}>
                                         <SelectTrigger className="w-[180px]">
@@ -369,7 +381,7 @@ export default function PromosIndex({ promos, filters, flash }) {
                             )}
                         </DialogTitle>
                     </DialogHeader>
-                    
+
                     <form onSubmit={handleSubmit}>
                         <div className="space-y-4">
                             <div>
@@ -533,6 +545,32 @@ export default function PromosIndex({ promos, filters, flash }) {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!deleteItem} onOpenChange={() => setDeleteItem(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {deleteItem?.message}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deleteItem?.route) {
+                                    router.delete(deleteItem.route);
+                                }
+                                setDeleteItem(null);
+                            }}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Hapus
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </AuthenticatedLayout>
     );
 }

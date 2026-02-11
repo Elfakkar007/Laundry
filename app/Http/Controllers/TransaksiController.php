@@ -239,7 +239,7 @@ class TransaksiController extends Controller
         return Inertia::render('Transaksi/Show', [
             'transaksi' => $transaksi,
             // FIXED: Show ALL statuses to allow manual override/correction as requested
-            'allowedNextStatuses' => Transaksi::getAvailableStatuses(),
+            'allowedNextStatuses' => $transaksi->getAllowedNextStatuses(),
             'isDelivery' => $transaksi->isDelivery(),
         ]);
     }
@@ -267,11 +267,10 @@ class TransaksiController extends Controller
         ]);
         
         // Check if status transition is allowed
-        // RELAXED: Allow Any Status Change for manual correction
-        // $allowedStatuses = $transaksi->getAllowedNextStatuses();
-        // if (!in_array($validated['status'], $allowedStatuses)) {
-        //     return back()->with('error', 'Transisi status tidak diizinkan. Status yang diizinkan: ' . implode(', ', $allowedStatuses));
-        // }
+        $allowedStatuses = $transaksi->getAllowedNextStatuses();
+        if (!in_array($validated['status'], $allowedStatuses)) {
+            return back()->with('error', 'Transisi status tidak valid. Status selanjutnya yang diizinkan: ' . implode(', ', $allowedStatuses));
+        }
         
         $oldStatus = $transaksi->status;
         $transaksi->update(['status' => $validated['status']]);

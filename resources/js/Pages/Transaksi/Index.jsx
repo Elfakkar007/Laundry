@@ -6,6 +6,16 @@ import { Input } from '@/Components/ui/input';
 import { Badge } from '@/Components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/Components/ui/alert-dialog';
 import { toast } from 'sonner';
 import {
     Plus, Search, FileText, Store, Calendar, Eye, Trash2,
@@ -18,6 +28,7 @@ export default function TransaksiIndex({ transaksis, filters, scoped_to_outlet, 
     const [paymentFilter, setPaymentFilter] = useState(filters.payment_filter || 'all');
     const [dateFrom, setDateFrom] = useState(filters.date_from || '');
     const [dateTo, setDateTo] = useState(filters.date_to || '');
+    const [deleteItem, setDeleteItem] = useState(null);
 
     useEffect(() => {
         if (flash?.success) toast.success(flash.success);
@@ -44,9 +55,10 @@ export default function TransaksiIndex({ transaksis, filters, scoped_to_outlet, 
             return;
         }
 
-        if (confirm(`Yakin ingin menghapus transaksi "${transaksi.kode_invoice}"?`)) {
-            router.delete(route('transaksi.destroy', transaksi.id));
-        }
+        setDeleteItem({
+            message: `Yakin ingin menghapus transaksi "${transaksi.kode_invoice}"?`,
+            route: route('transaksi.destroy', transaksi.id)
+        });
     };
 
     const formatRupiah = (amount) => {
@@ -333,6 +345,32 @@ export default function TransaksiIndex({ transaksis, filters, scoped_to_outlet, 
                     </div>
                 </div>
             </div>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!deleteItem} onOpenChange={() => setDeleteItem(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {deleteItem?.message}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deleteItem?.route) {
+                                    router.delete(deleteItem.route);
+                                }
+                                setDeleteItem(null);
+                            }}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Hapus
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </AuthenticatedLayout>
     );
 }

@@ -71,7 +71,7 @@ export default function AuthenticatedLayout({ header, children }) {
             href: route('transaksi.index'),
             icon: FileText,
             active: route().current('transaksi.*'),
-            show: (isKasir || isAdmin) && (hasPermission('transaksi.view') || hasPermission('transaksi.create')),
+            show: isAdmin || (isKasir && (hasPermission('transaksi.view') || hasPermission('transaksi.create'))),
         },
         // OWNER, ADMIN, KASIR: Laporan
         {
@@ -79,42 +79,42 @@ export default function AuthenticatedLayout({ header, children }) {
             href: route('laporan.index'), // route('reports.index'),
             icon: BarChart3,
             active: route().current('laporan.*'),
-            show: (isOwner || isAdmin || isKasir), // && hasPermission('report.view'),
+            show: isOwner || isAdmin || (isKasir && hasPermission('report.view')),
         },
         // ADMIN ONLY: Master Data
         {
             name: 'Master Data',
             icon: Sparkles,
             isGroup: true,
-            show: isAdmin && (hasPermission('outlet.view') || hasPermission('paket.view') || hasPermission('customer.view')),
+            show: isAdmin, // Admin always sees this group
             items: [
                 {
                     name: 'Outlet',
                     href: route('outlets.index'),
                     icon: Store,
                     active: route().current('outlets.*'),
-                    show: hasPermission('outlet.view'),
+                    show: isAdmin || hasPermission('outlet.view'),
                 },
                 {
                     name: 'Jenis Paket',
                     href: route('package-types.index'),
                     icon: Package,
                     active: route().current('package-types.*'),
-                    show: hasPermission('paket.view'),
+                    show: isAdmin || hasPermission('paket.view'),
                 },
                 {
                     name: 'Paket Layanan',
                     href: route('pakets.index'),
                     icon: FileText,
                     active: route().current('pakets.*'),
-                    show: hasPermission('paket.view'),
+                    show: isAdmin || hasPermission('paket.view'),
                 },
                 {
                     name: 'Pelanggan',
                     href: route('customers.index'),
                     icon: Users,
                     active: route().current('customers.*'),
-                    show: hasPermission('customer.view'),
+                    show: isAdmin || hasPermission('customer.view'),
                 },
             ],
         },
@@ -123,21 +123,21 @@ export default function AuthenticatedLayout({ header, children }) {
             name: 'Keuangan',
             icon: CreditCard,
             isGroup: true,
-            show: isAdmin && hasPermission('finance.view'),
+            show: isAdmin, // Admin always sees this group
             items: [
                 {
                     name: 'Biaya Tambahan',
                     href: route('surcharges.index'),
                     icon: CreditCard,
                     active: route().current('surcharges.*'),
-                    show: hasPermission('finance.view'),
+                    show: isAdmin || hasPermission('finance.view'),
                 },
                 {
                     name: 'Promo & Diskon',
                     href: route('promos.index'),
                     icon: Tag,
                     active: route().current('promos.*'),
-                    show: hasPermission('finance.view'),
+                    show: isAdmin || hasPermission('finance.view'),
                 },
             ],
         },
@@ -147,7 +147,7 @@ export default function AuthenticatedLayout({ header, children }) {
             href: route('users.index'),
             icon: UserCog,
             active: route().current('users.*'),
-            show: isAdmin && hasPermission('user.view'),
+            show: isAdmin || hasPermission('user.view'),
         },
         // ADMIN ONLY: Pengaturan
         {
@@ -155,7 +155,7 @@ export default function AuthenticatedLayout({ header, children }) {
             href: route('settings.index'),
             icon: Settings,
             active: route().current('settings.*'),
-            show: isAdmin && hasPermission('setting.view'),
+            show: isAdmin || hasPermission('setting.view'),
         },
         // ADMIN/OWNER ONLY: Activity Log
         {
@@ -163,7 +163,7 @@ export default function AuthenticatedLayout({ header, children }) {
             href: route('activity-log.index'),
             icon: Shield,
             active: route().current('activity-log.*'),
-            show: (isAdmin || hasRole('owner')) && hasPermission('activity-log.view'),
+            show: isAdmin || isOwner,
         },
     ];
 

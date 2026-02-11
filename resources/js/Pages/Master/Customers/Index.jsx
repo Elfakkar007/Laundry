@@ -28,6 +28,16 @@ import {
     DialogTitle,
     DialogFooter,
 } from '@/Components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/Components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Pencil, Trash2, Plus, Search, Users, Crown, Phone, MapPin, Award, Eye, Gift } from 'lucide-react';
 
@@ -35,6 +45,7 @@ export default function CustomersIndex({ customers, filters, flash }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState(null);
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
+    const [deleteItem, setDeleteItem] = useState(null);
     const [memberFilter, setMemberFilter] = useState(filters.member_filter || 'all');
 
     const { data, setData, post, put, processing, errors, reset } = useForm({
@@ -91,9 +102,10 @@ export default function CustomersIndex({ customers, filters, flash }) {
     };
 
     const handleDelete = (customer) => {
-        if (confirm(`Yakin ingin menghapus pelanggan "${customer.nama}"?`)) {
-            router.delete(route('customers.destroy', customer.id));
-        }
+        setDeleteItem({
+            message: `Yakin ingin menghapus pelanggan "${customer.nama}"?`,
+            route: route('customers.destroy', customer.id)
+        });
     };
 
     const handleSearch = (e) => {
@@ -404,6 +416,32 @@ export default function CustomersIndex({ customers, filters, flash }) {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!deleteItem} onOpenChange={() => setDeleteItem(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {deleteItem?.message}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deleteItem?.route) {
+                                    router.delete(deleteItem.route);
+                                }
+                                setDeleteItem(null);
+                            }}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Hapus
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </AuthenticatedLayout>
     );
 }

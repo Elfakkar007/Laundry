@@ -26,6 +26,16 @@ import {
     DialogTitle,
     DialogFooter,
 } from '@/Components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/Components/ui/alert-dialog';
 import { Badge } from '@/Components/ui/badge';
 import { toast } from 'sonner';
 import { Pencil, Trash2, Plus, Search, Power, PowerOff } from 'lucide-react';
@@ -34,6 +44,8 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingPaket, setEditingPaket] = useState(null);
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
+    const [deleteItem, setDeleteItem] = useState(null);
+    const [toggleItem, setToggleItem] = useState(null);
 
     const { data, setData, post, put, processing, errors, reset } = useForm({
         id_outlet: '',
@@ -92,15 +104,17 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
 
     const handleToggleActive = (paket) => {
         const status = paket.is_active ? 'nonaktifkan' : 'aktifkan';
-        if (confirm(`Yakin ingin ${status} paket "${paket.nama_paket}"?`)) {
-            router.post(route('pakets.toggle-active', paket.id));
-        }
+        setToggleItem({
+            message: `Yakin ingin ${status} paket "${paket.nama_paket}"?`,
+            route: route('pakets.toggle-active', paket.id)
+        });
     };
 
     const handleDelete = (paket) => {
-        if (confirm(`Yakin ingin menghapus paket "${paket.nama_paket}"?`)) {
-            router.delete(route('pakets.destroy', paket.id));
-        }
+        setDeleteItem({
+            message: `Yakin ingin menghapus paket "${paket.nama_paket}"?`,
+            route: route('pakets.destroy', paket.id)
+        });
     };
 
     const handleSearch = (e) => {
@@ -373,6 +387,57 @@ export default function PaketsIndex({ pakets, outlets, packageTypes, filters, fl
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Toggle Active Confirmation Dialog */}
+            <AlertDialog open={!!toggleItem} onOpenChange={() => setToggleItem(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Konfirmasi</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {toggleItem?.message}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (toggleItem?.route) {
+                                    router.post(toggleItem.route);
+                                }
+                                setToggleItem(null);
+                            }}
+                        >
+                            Ya, Lanjutkan
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!deleteItem} onOpenChange={() => setDeleteItem(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {deleteItem?.message}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deleteItem?.route) {
+                                    router.delete(deleteItem.route);
+                                }
+                                setDeleteItem(null);
+                            }}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Hapus
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </AuthenticatedLayout>
     );
 }

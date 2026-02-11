@@ -25,7 +25,7 @@ export default function Login({ status }) {
             <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
                 <Card className="w-full max-w-md">
                     <CardHeader className="space-y-1 flex flex-col items-center">
-                        <CardTitle className="text-2xl font-bold">Sistem Laundry</CardTitle>
+                        <CardTitle className="text-2xl font-bold">PureClean Laundry</CardTitle>
                         <CardDescription>
                             Masukkan username dan password Anda
                         </CardDescription>

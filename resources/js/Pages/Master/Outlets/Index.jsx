@@ -21,6 +21,16 @@ import {
     DialogTitle,
     DialogFooter,
 } from '@/Components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/Components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Pencil, Trash2, Plus, Search } from 'lucide-react';
 
@@ -32,6 +42,7 @@ export default function OutletsIndex({ outlets, filters, flash }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingOutlet, setEditingOutlet] = useState(null);
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
+    const [deleteItem, setDeleteItem] = useState(null);
 
     const { data, setData, post, put, processing, errors, reset } = useForm({
         nama: '',
@@ -91,9 +102,10 @@ export default function OutletsIndex({ outlets, filters, flash }) {
     };
 
     const handleDelete = (outlet) => {
-        if (confirm(`Yakin ingin menghapus outlet "${outlet.nama}"?`)) {
-            router.delete(route('outlets.destroy', outlet.id));
-        }
+        setDeleteItem({
+            message: `Yakin ingin menghapus outlet "${outlet.nama}"?`,
+            route: route('outlets.destroy', outlet.id)
+        });
     };
 
     const handleSearch = (e) => {
@@ -165,7 +177,7 @@ export default function OutletsIndex({ outlets, filters, flash }) {
                                         <Search className="h-4 w-4" />
                                     </Button>
                                 </form>
-                                
+
                                 <Button onClick={openCreateDialog}>
                                     <Plus className="mr-2 h-4 w-4" />
                                     Tambah Outlet
@@ -251,10 +263,10 @@ export default function OutletsIndex({ outlets, filters, flash }) {
                             {editingOutlet ? 'Edit Outlet' : 'Tambah Outlet Baru'}
                         </DialogTitle>
                     </DialogHeader>
-                    
+
                     <form onSubmit={handleSubmit}>
                         <div className="grid gap-6 md:grid-cols-2">
-                            
+
                             {/* KOLOM KIRI: Info Dasar */}
                             <div className="space-y-4">
                                 <div>
@@ -290,7 +302,7 @@ export default function OutletsIndex({ outlets, filters, flash }) {
                                         ℹ️ Pengaturan Ongkir
                                     </p>
                                     <p className="text-xs text-blue-700 dark:text-blue-300">
-                                        Harga ongkir per-KM diatur secara global di halaman <strong>Biaya & Ongkir</strong>. 
+                                        Harga ongkir per-KM diatur secara global di halaman <strong>Biaya & Ongkir</strong>.
                                         Anda bisa membuat berbagai opsi ongkir (Express, Regular, dll) dengan harga berbeda.
                                     </p>
                                 </div>
@@ -302,16 +314,16 @@ export default function OutletsIndex({ outlets, filters, flash }) {
                                     <Label className="text-base font-semibold mb-2 block">
                                         Lokasi Outlet
                                     </Label>
-                                    
+
                                     {/* Map Component */}
                                     <div className="rounded-md border overflow-hidden relative">
                                         <LocationPicker
                                             initialLat={data.latitude || -6.2088}
                                             initialLng={data.longitude || 106.8456}
-                                            onLocationChange={handleLocationChange} 
+                                            onLocationChange={handleLocationChange}
                                             height="250px"
                                         />
-                                        
+
                                         {/* Loading Overlay saat geser pin */}
                                         {isFetchingAddress && (
                                             <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-[1000]">
@@ -332,7 +344,7 @@ export default function OutletsIndex({ outlets, filters, flash }) {
                                         <span>Alamat Terdeteksi</span>
                                         <span className="text-xs font-normal text-gray-500">(Otomatis dari Peta)</span>
                                     </Label>
-                                    
+
                                     <textarea
                                         id="alamat_auto"
                                         value={data.alamat || ''}
@@ -374,6 +386,32 @@ export default function OutletsIndex({ outlets, filters, flash }) {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!deleteItem} onOpenChange={() => setDeleteItem(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {deleteItem?.message}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deleteItem?.route) {
+                                    router.delete(deleteItem.route);
+                                }
+                                setDeleteItem(null);
+                            }}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Hapus
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </AuthenticatedLayout>
     );
 }

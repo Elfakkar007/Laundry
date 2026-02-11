@@ -146,22 +146,27 @@ class Transaksi extends Model
         
         switch ($this->status) {
             case self::STATUS_BARU:
+                // Dari Baru hanya bisa ke Proses (atau Batal)
                 return [self::STATUS_PROSES, self::STATUS_BATAL];
             
             case self::STATUS_PROSES:
-                return [self::STATUS_SELESAI, self::STATUS_BATAL];
+                // Dari Proses hanya bisa ke Selesai
+                return [self::STATUS_SELESAI];
             
             case self::STATUS_SELESAI:
                 if ($isDelivery) {
+                    // Jika delivery: Selesai -> Dikirim
                     return [self::STATUS_DIKIRIM];
                 }
+                // Jika ambil sendiri: Selesai -> Diambil
                 return [self::STATUS_DIAMBIL];
             
             case self::STATUS_DIKIRIM:
+                // Dari Dikirim hanya bisa ke Diterima
                 return [self::STATUS_DITERIMA];
             
             default:
-                // Terminal states: diambil, diterima, batal
+                // Terminal states: diambil, diterima, batal -> Tidak bisa ubah status lagi
                 return [];
         }
     }

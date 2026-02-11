@@ -8,6 +8,16 @@ import { Badge } from '@/Components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/Components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Pencil, Trash2, Plus, Search, UserCog, AlertTriangle, Store, Shield } from 'lucide-react';
 
@@ -16,6 +26,7 @@ export default function UsersIndex({ users, roles, outlets, filters, flash }) {
     const [editingUser, setEditingUser] = useState(null);
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
     const [roleFilter, setRoleFilter] = useState(filters.role_filter || 'all');
+    const [deleteItem, setDeleteItem] = useState(null);
 
     const { data, setData, post, put, processing, errors, reset } = useForm({
         nama: '',
@@ -71,16 +82,17 @@ export default function UsersIndex({ users, roles, outlets, filters, flash }) {
     };
 
     const handleDelete = (user) => {
-        if (confirm(`Yakin ingin menghapus user "${user.nama}"?`)) {
-            router.delete(route('users.destroy', user.id));
-        }
+        setDeleteItem({
+            message: `Yakin ingin menghapus user "${user.nama}"?`,
+            route: route('users.destroy', user.id)
+        });
     };
 
     const handleSearch = (e) => {
         e.preventDefault();
-        router.get(route('users.index'), { 
+        router.get(route('users.index'), {
             search: searchTerm,
-            role_filter: roleFilter 
+            role_filter: roleFilter
         }, {
             preserveState: true,
             replace: true,
@@ -89,9 +101,9 @@ export default function UsersIndex({ users, roles, outlets, filters, flash }) {
 
     const handleFilterChange = (value) => {
         setRoleFilter(value);
-        router.get(route('users.index'), { 
+        router.get(route('users.index'), {
             search: searchTerm,
-            role_filter: value 
+            role_filter: value
         }, {
             preserveState: true,
             replace: true,
@@ -138,7 +150,7 @@ export default function UsersIndex({ users, roles, outlets, filters, flash }) {
                                         <Search className="h-4 w-4" />
                                     </Button>
                                 </form>
-                                
+
                                 <div className="flex gap-2">
                                     <Select value={roleFilter} onValueChange={handleFilterChange}>
                                         <SelectTrigger className="w-[180px]">
@@ -268,7 +280,7 @@ export default function UsersIndex({ users, roles, outlets, filters, flash }) {
                             )}
                         </DialogTitle>
                     </DialogHeader>
-                    
+
                     <form onSubmit={handleSubmit}>
                         <div className="space-y-4">
                             <div>
@@ -339,7 +351,7 @@ export default function UsersIndex({ users, roles, outlets, filters, flash }) {
                                         setData('role', value);
                                         // Auto-clear outlet if role is admin
                                         if (value === 'admin') {
-                                            setData({...data, role: value, id_outlet: ''});
+                                            setData({ ...data, role: value, id_outlet: '' });
                                         }
                                     }}
                                 >
@@ -380,9 +392,9 @@ export default function UsersIndex({ users, roles, outlets, filters, flash }) {
                                 >
                                     <SelectTrigger className={errors.id_outlet ? 'border-red-500' : ''}>
                                         <SelectValue placeholder={
-                                            data.role === 'admin' 
-                                                ? 'Admin tidak terikat outlet (Global)' 
-                                                : isKasirRole 
+                                            data.role === 'admin'
+                                                ? 'Admin tidak terikat outlet (Global)'
+                                                : isKasirRole
                                                     ? 'Pilih Outlet (WAJIB)'
                                                     : 'Pilih Outlet (Opsional)'
                                         } />
@@ -390,7 +402,7 @@ export default function UsersIndex({ users, roles, outlets, filters, flash }) {
                                     <SelectContent>
                                         {/* PERBAIKAN DI SINI: value tidak boleh string kosong */}
                                         <SelectItem value="global">Tidak ada (Global)</SelectItem>
-                                        
+
                                         {outlets.map((outlet) => (
                                             <SelectItem key={outlet.id} value={outlet.id.toString()}>
                                                 {outlet.nama}
@@ -401,7 +413,7 @@ export default function UsersIndex({ users, roles, outlets, filters, flash }) {
                                 {errors.id_outlet && (
                                     <p className="mt-1 text-sm text-red-500">{errors.id_outlet}</p>
                                 )}
-                                
+
                                 {/* Helper Text */}
                                 <div className="mt-2 text-xs text-gray-500 space-y-1">
                                     {data.role === 'kasir' && (
@@ -434,6 +446,32 @@ export default function UsersIndex({ users, roles, outlets, filters, flash }) {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!deleteItem} onOpenChange={() => setDeleteItem(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {deleteItem?.message}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deleteItem?.route) {
+                                    router.delete(deleteItem.route);
+                                }
+                                setDeleteItem(null);
+                            }}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Hapus
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </AuthenticatedLayout>
     );
 }

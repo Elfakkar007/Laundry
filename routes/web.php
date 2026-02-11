@@ -276,6 +276,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // ========================================
     Route::get('/laporan', [\App\Http\Controllers\LaporanController::class, 'index'])
         ->name('laporan.index');
+    Route::get('/laporan/export', [\App\Http\Controllers\LaporanController::class, 'export'])
+        ->name('laporan.export');
 
     // ========================================
     // ACTIVITY LOG (Admin/Owner Only)

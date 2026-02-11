@@ -19,6 +19,16 @@ import {
     DialogTitle,
     DialogFooter,
 } from '@/Components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/Components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Pencil, Trash2, Plus, Search } from 'lucide-react';
 
@@ -26,6 +36,7 @@ export default function PackageTypesIndex({ packageTypes, filters, flash }) {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingType, setEditingType] = useState(null);
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
+    const [deleteItem, setDeleteItem] = useState(null);
 
     const { data, setData, post, put, processing, errors, reset } = useForm({
         nama: '',
@@ -73,9 +84,10 @@ export default function PackageTypesIndex({ packageTypes, filters, flash }) {
     };
 
     const handleDelete = (type) => {
-        if (confirm(`Yakin ingin menghapus jenis paket "${type.nama}"?`)) {
-            router.delete(route('package-types.destroy', type.id));
-        }
+        setDeleteItem({
+            message: `Yakin ingin menghapus jenis paket "${type.nama}"?`,
+            route: route('package-types.destroy', type.id)
+        });
     };
 
     const handleSearch = (e) => {
@@ -113,7 +125,7 @@ export default function PackageTypesIndex({ packageTypes, filters, flash }) {
                                         <Search className="h-4 w-4" />
                                     </Button>
                                 </form>
-                                
+
                                 <Button onClick={openCreateDialog}>
                                     <Plus className="mr-2 h-4 w-4" />
                                     Tambah Jenis Paket
@@ -194,7 +206,7 @@ export default function PackageTypesIndex({ packageTypes, filters, flash }) {
                             {editingType ? 'Edit Jenis Paket' : 'Tambah Jenis Paket Baru'}
                         </DialogTitle>
                     </DialogHeader>
-                    
+
                     <form onSubmit={handleSubmit}>
                         <div className="space-y-4">
                             <div>
@@ -223,6 +235,32 @@ export default function PackageTypesIndex({ packageTypes, filters, flash }) {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!deleteItem} onOpenChange={() => setDeleteItem(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {deleteItem?.message}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deleteItem?.route) {
+                                    router.delete(deleteItem.route);
+                                }
+                                setDeleteItem(null);
+                            }}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Hapus
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </AuthenticatedLayout>
     );
 }
